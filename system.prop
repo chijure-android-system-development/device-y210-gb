@@ -1,0 +1,373 @@
+#
+# system.prop for y210
+#
+
+rild.libpath=/system/lib/libril-qc-1.so
+rild.libargs=-d /dev/smd0
+# /*<DTS2010100802374 yangqinghua & wuwei 20101009 Begin*/
+net.ntp.server=time.windows.com
+net.ntp.server2=time.nist.gov
+net.ntp.time=0
+net.ntp.timereference=0
+persist.rild.nitz_plmn=
+persist.rild.nitz_long_ons_0=
+persist.rild.nitz_long_ons_1=
+persist.rild.nitz_long_ons_2=
+persist.rild.nitz_long_ons_3=
+persist.rild.nitz_short_ons_0=
+persist.rild.nitz_short_ons_1=
+persist.rild.nitz_short_ons_2=
+persist.rild.nitz_short_ons_3=
+ril.subscription.types=NV,RUIM
+DEVICE_PROVISIONED=1
+debug.sf.hw=1
+debug.composition.7x27A.type=mdp
+debug.composition.7x25A.type=mdp
+# DTS2011122807723 fuxiaowei 20120103 begin
+dalvik.vm.heapsize=24m
+# DTS2011122807723 fuxiaowei 20120103 end
+#
+# system props for the cne module
+#
+persist.cne.UseCne=none
+persist.cne.bat.range.low.med=30
+persist.cne.bat.range.med.high=60
+persist.cne.loc.policy.op=/system/etc/OperatorPolicy.xml
+persist.cne.loc.policy.user=/system/etc/UserPolicy.xml
+persist.cne.bwbased.rat.sel=false
+persist.cne.snsr.based.rat.mgt=false
+persist.cne.bat.based.rat.mgt=false
+persist.cne.rat.acq.time.out=30000
+persist.cne.rat.acq.retry.tout=0
+persist.cne.fmc.mode=false
+persist.cne.fmc.init.time.out=30
+persist.cne.fmc.comm.time.out=130
+persist.cne.fmc.retry=false
+
+#
+# system props for the MM modules
+#
+media.stagefright.enable-player=true
+media.stagefright.enable-meta=false
+media.stagefright.enable-scan=true
+media.stagefright.enable-http=true
+media.stagefright.enable-fma2dp=true
+media.stagefright.enable-aac=true
+media.stagefright.enable-qcp=true
+
+#
+# system prop for opengles version
+#
+ro.opengles.version=131072
+
+#
+# system props for the data modules
+#
+ro.use_data_netmgrd=true
+persist.data.ds_fmc_app.mode=0
+
+#
+# system props for IMS module
+#
+persist.ims.regmanager.mode=0
+
+#
+# system prop for requesting Master role in incoming Bluetooth connection.
+#
+ro.bluetooth.request.master=true
+
+#
+# system prop for Bluetooth FTP profile
+#
+ro.qualcomm.bluetooth.ftp=true
+
+#
+# system prop for Bluetooth SAP profile
+#
+ro.qualcomm.bluetooth.sap=true
+
+#
+# system prop for Bluetooth Auto connect for remote initated connections
+#
+ro.bluetooth.remote.autoconnect=true
+
+#
+#system property for Bluetooth discoverability timeout in seconds
+#0: Always discoverable
+
+# DTS2011111803474 leiwei 20111207 begin
+debug.bt.discoverable_time=-1
+# DTS2011111803474 leiwei 20111207 end
+
+#
+# System prop to enable/disable OMH. Enabled by default
+#
+persist.omh.enabled=1
+
+#System prop to enable ehrpd capability
+ro.config.ehrpd=true
+
+# System property for cabl
+ro.qualcomm.cabl=1
+
+#
+#System prop to determine availability of
+#analog fm path
+#
+ro.fm.analogpath.supported=true
+#DTS2010060300084 xiongshiyi 00165767 20100603 begin
+#
+#System property for FM transmitter
+#
+ro.fm.transmitter=false
+
+#
+#System property for single instance recording
+#
+ro.fm.mulinst.recording.support=false
+ro.config.KeyPassToUser=true
+#System property for msm 
+#
+ro.hw_plat=7x25a
+#/* < DTS2011093001538 yangyuan 20110930 begin */
+#/*<DTS2011121604452 yangyuan 20111217 begin */
+ro.config.fm_type=libqcomfm_if
+#/* DTS2011121604452 yangyuan 20111217 end >*/
+#/* DTS2011093001538 yangyuan 20110930 end > */
+#DTS2010060300084 xiongshiyi 00165767 20100603 end
+
+# Begin:DTS2010071300747 add Qualifier opt added by h00152727 20100713
+ro.config.hw_opta=
+ro.config.hw_optb=
+# End  :DTS2010071300747 add Qualifier opt added by h00152727 20100713
+
+#
+# ADDITIONAL_BUILD_PROPERTIES
+#
+#DTS2011122304156 leihuiming delete one line :ro.nfc.port=I2C
+ro.config.alarm_alert=Alarm_Classic.ogg
+#DTS2011032102567 hanmincheng 20110411 begin 
+#delete ro.kernel.android.checkjni=1 to disable jni check 
+#DTS2011032102567 hanmincheng 20110411 end 
+ro.setupwizard.mode=OPTIONAL
+net.bt.name=Android
+dalvik.vm.stack-trace-file=/data/anr/traces.txt
+
+#DTS2010081400204 by h00152727&x00165767 20100814 begin
+ro.config.hw_addsettingsdbex=1
+#DTS2010081400204 by h00152727&x00165767 20100814 end
+
+# DTS2010092701023 mengxiaokun00172620 20100930 begin
+# allow to tear down mobile data connection when device is idle
+ro.config.hw_power_saving=true
+# DTS2010092701023 mengxiaokun00172620 20100930 end
+
+# <DTS2011012101400 wuxinrong 20110121 Frog for Gingerbread, sync DTS2010112303861 begin
+ro.config.PopupTwink=false
+ro.config.SetStatusbarText=false
+# Whether use the way of resource customize
+ro.config.hw_isCustomize=true
+# The Customize Type we need,01:C8600-FROG,02-TMO
+ro.config.hw_customizeType=02
+# DTS2011060303065 lizhenlong 20110602 end
+# DTS2011012101400 wuxinrong 20110121 Frog for Gingerbread, sync DTS2010112303861 end>
+
+# DTS2010072001659 kange159607 20100720 begin
+# allow device to sent and receive MMS even data service is disabled while this variable is true
+ro.config.hw_always_allow_mms=false
+# DTS2010072001659 kange159607 20100720 end
+
+# <DTS2011012801697 by xiongshiyi 20110125 BEGIN
+ro.config.hw_virtualsdcard=true
+# DTS2011012801697 by xiongshiyi 20110125 END>
+
+# DTS2011032202087 s00159653 20110322 begin
+ro.config.hw_GSensorOptimize=true
+# DTS2011032202087 s00159653 20110322 end
+
+# <DTS2010111202622 mengxiaokun00172620 20101112 begin
+ro.config.hw_proximity=true
+# DTS2010111202622 mengxiaokun00172620 20101112 end>
+
+# DTS2011030204519 s00159653 20110310 Begin
+ro.config.hw_menu_unlockscreen=false
+# DTS2011030204519 s00159653 20110310 End
+
+# DTS2010090602461 kange159607 20100906 begin
+ro.config.hw_RemindWifiToPdp=true
+# DTS2010090602461 kange159607 20100906 end
+# <DTS2010112601989 wangshoucheng00135276 20101129 begin
+ro.config.hw_lockscreen=true
+# DTS2010112601989 wangshoucheng00135276 20101129 end>
+
+# DTS2011041303563 xiongshiyi 20110411 BEGIN 
+ro.hw_oom_app=com.android.mms
+# DTS2011041303563 xiongshiyi 20110411 END 
+
+# DTS2011060101232 dingxudong 183776 20110601, sync DTS2010122802640 begin
+# true : enable device to unlock when PUK lock
+ro.config.hwft_PinPukUnlockscr=true
+# DTS2011060101232 dingxudong 183776 20110601, sync DTS2010122802640 end
+
+#<DTS2010092801811 GPSXtra y142196&q170606 20100928 begin
+ro.config.xtra_support=true
+# DTS2010092801811 GPSXtra y142196&q170606 20100928 end>
+#DTS2011093002512 jinsu 20110930 begin
+#DTS2011101806762 jiayanhong176905 20111019 begin
+ro.config.hw_globalVersion=true
+#DTS2011101806762 jiayanhong176905 20111019 end
+#DTS2011093002512 jinsu 20110930 end
+
+# DTS2011051604410 m00170653 20110530 begin
+# DTS2011120704662 leiwei 20111207 begin 
+ro.config.AM_PM_STYLE=1
+# DTS2011120704662 leiwei 20111207 end 
+# DTS2011051604410 m00170653 20110530 end
+
+# DTS2011051100003 r00182811 20110517 For safemode BEGIN
+ro.config.move_up_display=true
+# DTS2011051100003 r00182811 20110517 For safemode END
+
+#/*<DTS2010091000150 yangzijin 20100921 begin
+ro.opengles.version=131072
+#DTS2010091000150 yangzijin 20100921 end>*/
+# DTS2011060304448 guoxiong 2011-01-30 begin
+ro.config.hw_eapsim=true
+# DTS2011060304448 guoxiong 2011-01-30 end
+# DTS2011110106085 xiuhongju 20111101 begin
+# af controller enable switcher
+ro.config.camera.afctl.enable=true
+# DTS2011110106085 xiuhongju 20111101 end
+# DTS2011110805882 qilei 2011-11-08 begin
+keyguard.no_require_sim=true
+# DTS2011110805882 qilei 2011-11-08 end
+# 7x25A/27A update begin 
+ro.config.hw_email_signature=Sent from Huawei Mobile
+# 7x25A/27A update end 
+#DTS2011012800517 jinhui 20110124 begin
+hw_internal_sd=true
+#DTS2011012800517 jinhui 20110124 end
+# <DTS2011012701994 mengxiaokun00172620 20110127 begin
+ro.config.hw_ascend_ringtone=true
+# DTS2011012701994 mengxiaokun00172620 20110127 end>
+# <DTS2011012706064 wangzhenKF40344 20110128 begin
+ro.config.hw_toolbox=true
+# DTS2011012706064 wangzhenKF40344 20110128 end>
+# <DTS2011112104582 wanghongleiKF59621 20111121 begin
+ro.config.hw_reject_message=true
+# DTS2011112104582 wanghongleiKF59621 20111121 end>
+# <DTS2011112104694 zengpeiyu synchronize DTS2011101700513 2011-11-21 begin
+# card simulation menu will display if this prop is set to true
+ro.config.nfc.card_setting=false
+# DTS2011112104694 zengpeiyu synchronize DTS2011101700513 2011-11-21 end>
+ro.config.dualmic=true
+# /*<DTS2010121704813 jinhui 20101228 begin */
+ro.config.do_sdcard_upgrade=true
+# /* DTS2010121704813 jinhui 20101228 end>*/
+# DTS2012030801096 Cheng Wei c81003953 2012-03-13 change begin.
+ro.config.hw_camera_resize=false
+# DTS2012030801096 Cheng Wei c81003953 2012-03-13 change end.
+# DTS2012051606972 huangzhongcheng 20120522 begin
+ro.config.imageneed24bit=false
+# DTS2012051606972 huangzhongcheng 20120522 end
+# /*DTS2011111804031 20111201 Begin*/
+ro.config.bro_about=true
+ro.config.bro_exit=true
+# /*DTS2011111804031 20111201 End*/
+# DTS2011122807723 fuxiaowei 20120103 begin
+ro.config.support24bitdisplay=false
+# DTS2011122807723 fuxiaowei 20120103 end
+# <DTS2011120601134 shenjinhua00171968 20111206 begin
+ro.config.hw_optimizeBoot=true
+# DTS2011120601134 shenjinhua00171968 20111206 end>
+# DTS2011120702655 zengpeiyu 2011-12-6 begin
+ro.config.hw_tether_dun_enable=false
+# DTS2011120702655 zengpeiyu 2011-12-6 end
+
+ro.com.google.clientidbase=android-huawei
+ro.com.google.clientidbase.ms=android-huawei
+ro.com.google.clientidbase.yt=android-huawei
+ro.com.google.clientidbase.am=android-huawei
+ro.com.google.clientidbase.gmm=android-huawei 
+
+#DTS2011121506060 duanwei 20111215 begin
+ro.telephony.default_network=0
+#DTS2011121506060 duanwei 20111215 end
+
+
+#DTS2011122205472 leiwei 20111231 begin
+ro.dev.dmm.dpd.start_address=1
+#DTS2011122205472 leiwei 20111231 end
+# DTS2011112308257  l00108657 20110806 Begin
+ro.bidi.enabled=true
+ro.arabicdigit.disabled=false
+ro.persiandigit.disabled=false
+# DTS2011112308257  l00108657 20110806 End
+#DTS2012020702954  leiwei 20120207 begin
+ro.config.hw_gcf_mms=true
+#DTS2012020702954  leiwei 20120207 end
+ro.config.notification_sound=Glory.ogg
+ro.config.ringtone=Huawei_Tune.ogg
+# DTS2012020708159 lishilong 20120214 begin
+ro.config.location=1
+# DTS2012020708159 lishilong 20120214 end
+
+# /* < DTS2011122805320  l00203924 20111228 begin */
+ro.config.hw_uaprof=http://wap1.huawei.com/uaprof/Y210-0151WCDMA-NORMAL.xml
+ro.config.hw_use_browser_ua=true
+ro.config.hw_browser_ua3g=http://wap1.huawei.com/uaprof/Y210-0151WCDMA-NORMAL.xml
+ro.config.hw_browser_ua2g=http://wap1.huawei.com/uaprof/Y210-0151GPRS-NORMAL.xml
+# /* < DTS2011122805320  l00203924 20111228 end */
+# DTS2012060708313 yangkai 20120619 begin
+ro.config.galEnable=true
+# DTS2012060708313 yangkai 20120619 end
+
+# DTS2012082806142 tangxiaoyi 20120917 begin 
+ro.confg.hw_master_sync_auto=true
+# DTS2012082806142 tangxiaoyi 20120917 end
+
+# DTS2012090505615 zhangyuanshu 20120927 begin
+#bluetooth_fileReceiver allows user receive no suffixal file.
+ro.config.bt_Receive=true
+# DTS2012090505615 zhangyuanshu 20120927 end
+# DTS2012091805679 z00210951 20121009 begin
+ro.config.show_battery_id=true
+# DTS2012091805679 z00210951 20121009 end
+
+#DTS2013011104162  huxuesong 20130111 begin
+#DTS2012101107497 limeichuan 20121016 begin
+ro.config.incall_notify_mms=false
+#DTS2012101107497 limeichuan 20121016 end
+#DTS2013011104162  huxuesong 20130111 end
+
+#DTS2012083007655 yujiajan 2012-08-31 begin
+ro.com.google.gmsversion=gb_signed_r10
+#DTS2012083007655 yujiajan 2012-08-31 end
+
+#DTS2011112204328 duanwei 20111206 begin
+ro.config.hwft_PinPukUnlockscr=true
+ro.config.hw_pukTriedTenTimes=false
+#DTS2011112204328 duanwei 20111206 end
+# DTS2012102707282 wangbinbin00218086 20121105 begin
+ro.config.hideAutoBrightness=true
+# DTS2012102707282 wangbinbin00218086 20121105 end
+# DTS2012110806815 zhangxinsheng00221699 20121109 begin
+ro.remove.powerendcallenabled=1
+# DTS2012110806815 zhangxinsheng00221699 20121109 end
+
+#DTS2012041807716 limeichuan 20121217 begin
+ro.config.hw_voicemail_no_sim=true
+#DTS2012041807716 limeichuan 20121217 end
+
+
+ro.product.CustCVersion=C00
+ro.product.CustDVersion=D002
+ro.build.version.incremental=C40B855
+ro.build.tags=ota-rel-keys,release-keys
+ro.build.description=MSM7x25-user 2.1-update1 ERE27 C40B855 ota-rel-keys,release-keys
+ro.build.fingerprint=Huawei/Y210/hwy210-0151:2.3.6/HuaweiY210-0151/C40B855:user/ota-rel-keys,release-keys
+ro.build.display.id=Y210-0151V100R001C40B855
+ro.confg.hw_appsbootversion=Y210-0151V100R001C40B855_APPSBOOT
+ro.confg.hw_appversion=Y210-0151V100R001C40B855_KERNEL
+ro.confg.hw_appfsversion=Y210-0151V100R001C40B855_SYSIMG
+# AW8D00124 Modified by zhangshuai, 2010/05/27 END 
