@@ -34,21 +34,23 @@
 
 # these should not be world writable
 
+#/* <DTS2011091901282 wangdong 20110919 begin */
+#/*< DTS2011022301492  yanzhijun 20110223 begin */
 #enable system program access the diag
 /dev/diag                 0666   radio      radio
+#/* DTS2011022301492  yanzhijun 20110223 end >*/ 
+#/* DTS2011091901282 wangdong 20110919 end> */
 
-/dev/diag_arm9            0660   radio      radio
+dev/diag_arm9            0660   radio      radio
 /dev/android_adb          0660   adb        adb
 /dev/android_adb_enable   0660   adb        adb
 /dev/ttyMSM0              0600   bluetooth  bluetooth
 /dev/ttyHS0               0600   bluetooth  bluetooth
-/dev/ttyGS0               0660   system     system
 /dev/uinput               0660   system     bluetooth
 /dev/alarm                0664   system     radio
 /dev/tty0                 0660   root       system
-/dev/graphics/fb1         0660   system     graphics
 /dev/sdio_tty_ciq_00      0660   system     system
-/dev/graphics/*           0660   system     graphics
+/dev/graphics/*           0660   root       graphics
 /dev/msm_hw3dm            0660   system     graphics
 /dev/msm_rotator          0660   system     graphics
 /dev/input/*              0660   root       input
@@ -59,11 +61,11 @@
 /dev/pmem_adsp*           0660   system     audio
 /dev/pmem_smipool*        0660   system     camera
 /dev/pmem_camera*         0660   system     camera
-/dev/oncrpc/*             0666   root       system
+/dev/oncrpc/*             0660   root       qcom_oncrpc
 /dev/adsp/*               0660   system     audio
 /dev/snd/*                0660   system     audio
 /dev/mt9t013              0660   system     system
-/dev/msm_camera/*         0660   system     camera
+/dev/msm_camera/*         0660   system     system
 /dev/akm8976_daemon       0640   compass    system
 /dev/akm8976_aot          0640   compass    system
 /dev/akm8973_daemon       0640   compass    system
@@ -79,8 +81,10 @@
 /dev/i2c-4                0664   root       system
 /dev/msm_pcm_out*         0660   system     audio
 /dev/msm_pcm_in*          0660   system     audio
-/dev/msm_mvs              0660   system     audio
+#/* <DTS2012021705291 leiheipingKF66178 20120217 begin */
+#enable radio program access msm_voicememo
 /dev/msm_voicememo        0666   system     audio
+#/* DTS2012021705291 leiheipingKF66178 20120217 end> */
 /dev/msm_pcm_ctl*         0660   system     audio
 /dev/msm_snd*             0660   system     audio
 /dev/msm_mp3*             0660   system     audio
@@ -102,7 +106,9 @@
 /dev/smd2                 0660   bluetooth      bluetooth
 /dev/smd0                 0640   radio      radio
 /dev/smd7                 0640   radio      radio
+#/*< DTS2011113002685 zhaojunmin 20111130 begin */
 /dev/smd17                0600   system     system
+#/* DTS2011113002685 zhaojunmin 20111130 end >*/
 /dev/smdcntl0             0640   radio      radio
 /dev/smdcntl1             0640   radio      radio
 /dev/smdcntl2             0640   radio      radio
@@ -128,17 +134,16 @@
 /dev/qmi1                 0640   radio      radio
 /dev/qmi2                 0640   radio      radio
 /dev/bus/usb/*            0660   root       usb
-/dev/mtp_usb              0660   root       mtp
-/dev/gemini0              0660   system     camera
+/dev/gemini0              0660   system     system
 /dev/mdm                  0660   system     system
 /dev/ttyHSL1              0660   system     system
 /dev/tty_sdio_00          0660   system     system
+#/*< DTS2011083101392 yanzhijun 20110831 begin */
+#change mmcblk0p17(mic) and del mmcblk0p18(GROW) by yanzhijun
 /dev/block/mmcblk0p7     0660   system     system
+#/* DTS2011083101392 yanzhijun 20110831 end >*/ 
 /dev/usb_accessory        0660   root       usb
-/dev/video*	          0660   system     camera 
-/dev/tun                  0660   system     vpn
-#regular apps need to be able to open ion
-/dev/ion                  0664   system     system
+/dev/video*               0660   system     system
 
 # CDMA radio interface MUX
 /dev/ts0710mux*           0640   radio      radio
@@ -151,13 +156,11 @@
 #permissions for video
 /dev/msm_vidc_reg         0660  system       audio
 /dev/msm_vidc_dec         0660  system       audio
-/dev/msm_vidc_dec_sec     0660  system       audio
 /dev/msm_vidc_enc         0660  system       audio
 #permissions for audio
 /dev/msm_amrnb            0660  system       audio
 /dev/msm_amrwb            0660  system       audio
 /dev/msm_aac              0660  system       audio
-/dev/msm_multi_aac        0660  system       audio
 /dev/msm_aac_in           0660  system       audio
 /dev/msm_qcelp            0660  system       audio
 /dev/msm_evrc             0660  system       audio
@@ -172,11 +175,23 @@
 /dev/msm_a2dp_in          0640  system       audio
 /dev/msm_amrnb_in         0640  system       audio
 /sys/devices/virtual/usb_composite/*   enable      0664  root   system
-/sys/devices/virtual/smdpkt/smdcntl*       open_timeout   0664 radio radio
+
+#/*<DTS2011100400385 fangxinyong 20111020 begin */
 /dev/hw_extern_sdcard        0444   system   system
 /dev/hw_extern_sdcardMounted 0644   system   system
+#/* DTS2011100400385 fangxinyong 20111020 end >*/
+
+#/*< DTS2011062206646 libeibei 20110623 begin */
 /dev/smem_sleep_log                  0664   system   system
+#/* DTS2011062206646 libeibei 20110623 end >*/
+#/* < DTS2011092700638  sunyue 20110927 begin */
 /dev/pn544                 0660   root   nfc
-/dev/msm_dsps             0660  system       system
+#/* DTS2011092700638  sunyue 20110927 end > */
+
+#/* < DTS2011110800980 fangxinyong 20111108 begin */
 /dev/key_test              0664   system   system
+#/* DTS2011110800980 fangxinyong 20111108 end > */
+
+#/* < DTS2012030604199 tangying 20120306 begin */
 /dev/hw_led            0740   system     system 
+#/* DTS2012030604199 tangying 20120306 end > */

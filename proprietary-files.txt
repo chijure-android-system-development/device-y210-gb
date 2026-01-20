@@ -47,20 +47,22 @@ lib/liboem_rapi.so
 
 lib/hw/sensors.default.so
 
+# Graphics / GPU (Adreno 200 / MSM7x27A)
+etc/firmware/yamato_pfp.fw
+etc/firmware/yamato_pm4.fw
+lib/egl/egl.cfg
+lib/egl/libEGL_adreno200.so
+lib/egl/libGLESv1_CM_adreno200.so
+lib/egl/libGLESv2_adreno200.so
+lib/egl/libq3dtools_adreno200.so
+lib/hw/copybit.msm7k.so
+lib/hw/gralloc.msm7k.so
+lib/libgsl.so
+
 ## Camera proprietaries
 lib/liboemcamera.so
 lib/libmmjpeg.so
 lib/libmmipl.so
-lib/libchromatix_mt9e013_ar.so
-lib/libchromatix_mt9e013_default_video.so
-lib/libchromatix_mt9e013_preview.so
-lib/libchromatix_mt9e013_video_hfr.so
-lib/libchromatix_mt9p017_ar.so
-lib/libchromatix_mt9p017_preview.so
-lib/libchromatix_mt9p017_video.so
-lib/libchromatix_s5k4e1_ar.so
-lib/libchromatix_s5k4e1_default_video.so
-lib/libchromatix_s5k4e1_preview.so
 
 # omx test
 lib/libOmxAacDec.so
@@ -94,9 +96,7 @@ lib/libomx_amrenc_sharedlibrary.so
 lib/libomx_amrdec_sharedlibrary.so
 
 # misc
-bin/akmd8962
-bin/akmd8975
-bin/brcm_patchram_plus
+bin/brcm_patchram_plus_check
 bin/compassd
 bin/load_oemlogo
 bin/modempre
@@ -105,6 +105,5 @@ bin/port-bridge
 bin/rmt_storage
 bin/wlan_detect
 bin/bridgemgrd
-bin/btld
 bin/netmgrd
 bin/wl_4330

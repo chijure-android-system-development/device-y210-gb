@@ -20,7 +20,7 @@ persist.rild.nitz_short_ons_2=
 persist.rild.nitz_short_ons_3=
 ril.subscription.types=NV,RUIM
 DEVICE_PROVISIONED=1
-debug.sf.hw=1
+debug.sf.hw=0
 debug.composition.7x27A.type=mdp
 debug.composition.7x25A.type=mdp
 # DTS2011122807723 fuxiaowei 20120103 begin

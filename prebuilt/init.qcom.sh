@@ -34,20 +34,21 @@ multirild=`getprop ro.multi.rild`
 dsds=`getprop persist.dsds.enabled`
 case "$baseband" in
     "msm" | "csfb" | "svlte2a" | "unknown")
-    start ril-daemon
-    start qmuxd
-    start netmgrd
-    case "$baseband" in
-        "svlte2a" | "csfb")
-        start qmiproxy
-    esac
-    case "$multirild" in
-        "true")
-         case "$dsds" in
-             "true")
-             start ril-daemon1
-         esac
-    esac
+    # RIL stack disabled (rild/qmuxd/netmgrd/qmiproxy)
+    # start ril-daemon
+    # start qmuxd
+    # start netmgrd
+    # case "$baseband" in
+    #     "svlte2a" | "csfb")
+    #     start qmiproxy
+    # esac
+    # case "$multirild" in
+    #     "true")
+    #      case "$dsds" in
+    #          "true")
+    #          start ril-daemon1
+    #      esac
+    # esac
 esac
 
 #

@@ -36,8 +36,6 @@ BOARD_LDPI_RECOVERY := true
 BOARD_HAS_JANKY_BACKBUFFER := true
 BOARD_CUSTOM_GRAPHICS           := ../../../device/huawei/y210/recovery/graphics.c
 
-# BOARD_HAS_NO_SELECT_BUTTON := true
-# BOARD_USE_CUSTOM_RECOVERY_FONT := '"font_7x16.h"'
 
 # OpenGL drivers config file path
 BOARD_EGL_CFG := device/huawei/y210/prebuilt/system/lib/egl/egl.cfg
@@ -54,21 +52,20 @@ JS_ENGINE := v8
 HTTP := chrome
 
 BOARD_HAVE_BLUETOOTH := true
-# BOARD_HAVE_BLUETOOTH_BCM := true
+BOARD_HAVE_BLUETOOTH_BCM := true
 
 # RIL
 # BOARD_PROVIDES_LIBRIL := true
 
 # Wi-Fi
 BOARD_WPA_SUPPLICANT_DRIVER := WEXT
-WPA_SUPPLICANT_VERSION := VER_0_6_X
-BOARD_WLAN_DEVICE := bcm4330
-WIFI_DRIVER_MODULE_PATH := "/system/wifi/dhd_4330.ko"
-WIFI_DRIVER_FW_PATH_AP := "/system/wifi/fw_4330_b2.bin"
-WIFI_DRIVER_FW_PATH_STA := "/system/wifi/fw_4330_b2.bin"
-WIFI_DRIVER_FW_PATH_P2P := "/system/wifi/fw_4330_b2.bin"
-WIFI_DRIVER_MODULE_ARG := "firmware_path=/system/wifi/fw_4330_b2.bin nvram_path=/system/wifi/nvram_4330.txt"
-WIFI_DRIVER_MODULE_NAME := "dhd"
+BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_ath6kl
+BOARD_WLAN_DEVICE           := ar6000
+WIFI_DRIVER_MODULE_PATH     := /system/wifi/ar6000.ko
+WIFI_DRIVER_MODULE_ARG      := ""
+WIFI_DRIVER_MODULE_NAME     := ar6000
+WPA_SUPPLICANT_VERSION      := VER_0_8_X
+WIFI_PRE_LOADER             := wlan_detect
 
 # Partition sizes from device /proc/mtd (bytes)
 BOARD_BOOTIMAGE_PARTITION_SIZE := 0x00500000
@@ -100,9 +97,9 @@ TARGET_RECOVERY_INITRC := device/huawei/y210/recovery/etc/init.rc
 # BOARD_USES_MMCUTILS := true
 # BOARD_HAS_NO_MISC_PARTITION := true
 
-# BOARD_USE_USB_MASS_STORAGE_SWITCH := true
-# TARGET_USE_CUSTOM_LUN_FILE_PATH := /sys/devices/platform/usb_mass_storage/lun
-# TARGET_USE_CUSTOM_SECOND_LUN_NUM := 2
-# BOARD_VOLD_MAX_PARTITIONS := 19
-# BOARD_VOLD_EMMC_SHARES_DEV_MAJOR := true
-# BOARD_UMS_LUNFILE := "/sys/devices/platform/usb_mass_storage/lun0/file"
+BOARD_USE_USB_MASS_STORAGE_SWITCH := true
+TARGET_USE_CUSTOM_LUN_FILE_PATH := /sys/devices/platform/usb_mass_storage/lun
+TARGET_USE_CUSTOM_SECOND_LUN_NUM := 2
+BOARD_VOLD_MAX_PARTITIONS := 19
+BOARD_VOLD_EMMC_SHARES_DEV_MAJOR := true
+BOARD_UMS_LUNFILE := "/sys/devices/platform/usb_mass_storage/lun0/file"
