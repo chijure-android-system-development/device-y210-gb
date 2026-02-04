@@ -1,5 +1,6 @@
 ## RIL related stuff
 bin/qmuxd
+bin/qmiproxy
 bin/rild
 lib/libauth.so
 lib/libcm.so
@@ -103,6 +104,7 @@ bin/modempre
 bin/oem_rpc_svc
 bin/port-bridge
 bin/rmt_storage
+bin/ath_supplicant
 bin/wlan_detect
 bin/bridgemgrd
 bin/netmgrd

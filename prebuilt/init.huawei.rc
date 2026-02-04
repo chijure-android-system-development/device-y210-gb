@@ -25,6 +25,9 @@
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+import /init.y210.rc
+import /init.memm.rc
+
 on boot-pause
     exec system/bin/battery_charging
 
@@ -103,14 +106,47 @@ on boot
     #/* DTS2011121504967 wanghao 20111215 end > */
     #/* DTS2011122402005 wanghao 20111224 end > */
 
-    #port-bridge
+    # RIL device permissions (match stock expectations)
     chmod 0660 /dev/smd0
     chown system system /dev/smd0
+    chmod 0660 /dev/smd7
+    chown radio radio /dev/smd7
+    chmod 0666 /dev/diag
+    chown radio radio /dev/diag
+    chmod 0660 /dev/smdcntl0
+    chown radio radio /dev/smdcntl0
+    chmod 0660 /dev/smdcntl1
+    chown radio radio /dev/smdcntl1
+    chmod 0660 /dev/smdcntl2
+    chown radio radio /dev/smdcntl2
+    chmod 0660 /dev/smdcntl3
+    chown radio radio /dev/smdcntl3
+    chmod 0660 /dev/smdcntl4
+    chown radio radio /dev/smdcntl4
+    chmod 0660 /dev/smdcntl5
+    chown radio radio /dev/smdcntl5
+    chmod 0660 /dev/smdcntl6
+    chown radio radio /dev/smdcntl6
+    chmod 0660 /dev/smdcntl7
+    chown radio radio /dev/smdcntl7
+
+    #port-bridge
 
     chmod 0660 /dev/ttyGS0
     chown system system /dev/ttyGS0
 
     chmod 0444 /sys/devices/platform/msm_hsusb/gadget/usb_state
+
+    # Ensure Huawei RPC service is up early
+    start oem_rpc_svc
+
+on property:sys.boot_completed=1
+    # Fix oncrpc node ownership/permissions after system is fully up
+    exec /system/bin/sh -c "chown root qcom_oncrpc /dev/oncrpc/*; chmod 0660 /dev/oncrpc/*"
+    # Restart RPC service after fixing perms
+    stop ril-daemon
+    start oem_rpc_svc
+    start ril-daemon
 
     # Remove write permissions to video related nodes
     chmod 0664 /sys/devices/virtual/graphics/fb1/hpd
@@ -223,6 +259,11 @@ on property:bt.hci_smd.driver.load=1
 on property:bt.hci_smd.driver.load=0
     exec /system/bin/rmmod hci_smd.ko
 
+service oem_rpc_svc /system/bin/oem_rpc_svc
+    class main
+    user root
+    group qcom_oncrpc
+
 service bt-dun /system/bin/dun-server /dev/smd7 /dev/rfcomm0
     disabled
     oneshot
@@ -253,8 +294,15 @@ service port-bridge /system/bin/port-bridge /dev/smd0 /dev/ttyGS0
 
 on property:ro.baseband="msm"
     start port-bridge
+    # Huawei RPC service needed by RIL stack on this device
+    start oem_rpc_svc
     # Enable BT-DUN only for all msms
     setprop ro.qualcomm.bluetooth.dun true
+    # Start RIL on MSM baseband (service is defined in init.rc and disabled by default).
+    start ril-daemon
+    start qmuxd
+    start netmgrd
+    start qmiproxy
 
 on property:ro.baseband="unknown"
     start port-bridge

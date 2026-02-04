@@ -4,6 +4,11 @@
 
 rild.libpath=/system/lib/libril-qc-1.so
 rild.libargs=-d /dev/smd0
+rild.libargs=-d /dev/smd0
+ro.telephony.default_network=0
+ro.telephony.ril_class=HuaweiQualcommRIL
+ro.baseband=msm
+ro.sf.lcd_density=160
 # /*<DTS2010100802374 yangqinghua & wuwei 20101009 Begin*/
 net.ntp.server=time.windows.com
 net.ntp.server2=time.nist.gov
@@ -20,7 +25,7 @@ persist.rild.nitz_short_ons_2=
 persist.rild.nitz_short_ons_3=
 ril.subscription.types=NV,RUIM
 DEVICE_PROVISIONED=1
-debug.sf.hw=0
+debug.sf.hw=1
 debug.composition.7x27A.type=mdp
 debug.composition.7x25A.type=mdp
 # DTS2011122807723 fuxiaowei 20120103 begin

@@ -16,7 +16,7 @@ $(call inherit-product, vendor/cyanogen/products/bcm_fm_radio.mk)
 PRODUCT_NAME := cyanogen_y210
 PRODUCT_BRAND := huawei
 PRODUCT_DEVICE := y210
-PRODUCT_MODEL := Y210
+PRODUCT_MODEL := HUAWEI Y210-0151
 PRODUCT_MANUFACTURER := Huawei
 PRODUCT_BUILD_PROP_OVERRIDES += PRODUCT_NAME=y210 BUILD_ID=GRK39F BUILD_DISPLAY_ID=GWK74 BUILD_FINGERPRINT=google/passion/passion:2.3.6/GRK39F/189904:user/release-keys PRIVATE_BUILD_DESC="passion-user 2.3.6 GRK39F 189904 release-keys"
 

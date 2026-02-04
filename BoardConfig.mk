@@ -59,12 +59,11 @@ BOARD_HAVE_BLUETOOTH_BCM := true
 
 # Wi-Fi
 BOARD_WPA_SUPPLICANT_DRIVER := WEXT
-BOARD_WPA_SUPPLICANT_PRIVATE_LIB := lib_driver_cmd_ath6kl
 BOARD_WLAN_DEVICE           := ar6000
 WIFI_DRIVER_MODULE_PATH     := /system/wifi/ar6000.ko
 WIFI_DRIVER_MODULE_ARG      := ""
 WIFI_DRIVER_MODULE_NAME     := ar6000
-WPA_SUPPLICANT_VERSION      := VER_0_8_X
+WPA_SUPPLICANT_VERSION      := VER_0_6_X
 WIFI_PRE_LOADER             := wlan_detect
 
 # Partition sizes from device /proc/mtd (bytes)

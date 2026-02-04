@@ -66,17 +66,21 @@ class PmemAllocatorDepsDeviceImpl : public PmemUserspaceAllocator::Deps,
 
     virtual size_t getPmemTotalSize(int fd, size_t* size) {
         int err = 0;
-#ifndef TARGET_MSM7x27
         pmem_region region;
         err = ioctl(fd, PMEM_GET_TOTAL_SIZE, &region);
         if (err == 0) {
             *size = region.len;
         }
+        if (err == 0) {
+            return 0;
+        }
+#ifdef TARGET_MSM7x27
+#ifndef USE_ASHMEM
+        // Fallback for boards that don't support PMEM_GET_TOTAL_SIZE.
+        // Use a conservative size to avoid mmap failures.
+        *size = 12 << 20; // 12 MiB
 #else
-#ifdef USE_ASHMEM
-	*size = m->info.xres * m->info.yres * 2 * 2;
-#else
-	*size = 23<<20; //23MB for 7x27
+        *size = 8 << 20; // 8 MiB
 #endif
 #endif
         return err;
