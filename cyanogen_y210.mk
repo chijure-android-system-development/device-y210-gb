@@ -4,8 +4,8 @@ $(call inherit-product, device/huawei/y210/device_y210.mk)
 # Inherit some common cyanogenmod stuff.
 $(call inherit-product, vendor/cyanogen/products/common_full.mk)
 
-# Include GSM stuff
-$(call inherit-product, vendor/cyanogen/products/gsm.mk)
+# Include GSM stuff (disabled for now, no RIL)
+# $(call inherit-product, vendor/cyanogen/products/gsm.mk)
 
 # Broadcom FM radio
 $(call inherit-product, vendor/cyanogen/products/bcm_fm_radio.mk)
@@ -18,7 +18,7 @@ PRODUCT_BRAND := huawei
 PRODUCT_DEVICE := y210
 PRODUCT_MODEL := HUAWEI Y210-0151
 PRODUCT_MANUFACTURER := Huawei
-PRODUCT_BUILD_PROP_OVERRIDES += PRODUCT_NAME=y210 BUILD_ID=GRK39F BUILD_DISPLAY_ID=GWK74 BUILD_FINGERPRINT=google/passion/passion:2.3.6/GRK39F/189904:user/release-keys PRIVATE_BUILD_DESC="passion-user 2.3.6 GRK39F 189904 release-keys"
+# PRODUCT_BUILD_PROP_OVERRIDES += PRODUCT_NAME=y210 BUILD_ID=GRK39F BUILD_DISPLAY_ID=GWK74 BUILD_FINGERPRINT=Huawei/Y210/hwy210-0151:2.3.6/HuaweiY210-0151/C40B855:user/ota-rel-keys,release-keys PRIVATE_BUILD_DESC="passion-user 2.3.6 GRK39F 189904 release-keys"
 
 # Release name and versioning
 PRODUCT_RELEASE_NAME := Y210

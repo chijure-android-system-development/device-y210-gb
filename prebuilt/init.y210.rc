@@ -146,6 +146,10 @@ on post-fs
     mkdir /data/misc/wifi/load
     chmod 0775 /data/misc/wifi/load
     chown system system /data/misc/wifi/load/
+    # Keep a local copy for legacy wlan_tool loader path.
+    copy /system/wifi/ar6000.ko /data/misc/wifi/load/ar6000.ko
+    chown system system /data/misc/wifi/load/ar6000.ko
+    chmod 0644 /data/misc/wifi/load/ar6000.ko
     copy /system/wifi/ath6k/caldata_MSM7225A_Y210.bin /data/misc/wifi/load/caldata.bin
     chown system system /data/misc/wifi/load/caldata.bin
     chmod 0660 /data/misc/wifi/load/caldata.bin
@@ -291,35 +295,6 @@ service opush /system/bin/sdptool add --psm=5255 --channel=12 OPUSH
     group bluetooth net_bt_admin
     disabled
     oneshot
-    
-#/* < DTS2011111007245 wanghao 20111110 begin */
-service wlan_detect /system/bin/wlan_detect
-    user root
-    group root
-    oneshot
-#/* DTS2011111007245 wanghao 20111110 end > */
-
-#/* < DTS2011121504967 wanghao 20111215 begin */
-#/* < DTS2011100803980 wanghao 20111008 begin */
-service wpa_supplicant /system/bin/ath_supplicant -Dar6003 -ieth0 -W -c/data/misc/wifi/wpa_supplicant.conf 
-    disabled
-    oneshot
-# /* < DTS2012011805648 limeng 20120203 begin */
-service ath_supplicant /system/bin/ath_supplicant -Dar6003 -ieth0 -W -c/data/misc/wifi/wpa_supplicant.conf
-    disabled
-    oneshot
-# /* DTS2012011805648 limeng 20120203 end > */
-#/* < DTS2012030506477 huangpei 20120326 begin */
-service dhcpcd_eth0 /system/bin/dhcpcd -BKL 
-    disabled 
-    oneshot
-    
-service iprenew_eth0 /system/bin/dhcpcd -n 
-    disabled 
-    oneshot
-#/* DTS2012030506477 huangpei 20120326 end > */
-#/* DTS2011100803980 wanghao 20111008 end > */
-#/* DTS2011121504967 wanghao 20111215 end > */
 
 #/* < DTS2012051703125 youqi 20120517 begin */
 service nfc_check /system/bin/nfc_check

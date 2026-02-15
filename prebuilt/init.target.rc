@@ -41,6 +41,24 @@ service wlan_tool /system/bin/wlan_tool
     group wifi system net_admin inet shell
     disabled
     oneshot
+
+service wlan_tool_load /system/bin/wlan_tool load
+    user root
+    group wifi system net_admin inet shell
+    disabled
+    oneshot
+
+service wlan_tool_unload /system/bin/wlan_tool unload
+    user root
+    group wifi system net_admin inet shell
+    disabled
+    oneshot
+
+on property:wlan.driver.status=insmod
+    start wlan_tool_load
+
+on property:wlan.driver.status=rmmod
+    start wlan_tool_unload
 #/* DTS2011121504967 wanghao 20111215 end > */
 #/*< DTS2011123104068 wanghao 20111231 begin*/
 service abtfilt /system/bin/wlan_tool abtfilt_qcom

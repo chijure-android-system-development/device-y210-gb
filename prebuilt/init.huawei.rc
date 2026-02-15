@@ -144,9 +144,9 @@ on property:sys.boot_completed=1
     # Fix oncrpc node ownership/permissions after system is fully up
     exec /system/bin/sh -c "chown root qcom_oncrpc /dev/oncrpc/*; chmod 0660 /dev/oncrpc/*"
     # Restart RPC service after fixing perms
-    stop ril-daemon
+    # stop ril-daemon
     start oem_rpc_svc
-    start ril-daemon
+    # start ril-daemon
 
     # Remove write permissions to video related nodes
     chmod 0664 /sys/devices/virtual/graphics/fb1/hpd
@@ -298,11 +298,11 @@ on property:ro.baseband="msm"
     start oem_rpc_svc
     # Enable BT-DUN only for all msms
     setprop ro.qualcomm.bluetooth.dun true
-    # Start RIL on MSM baseband (service is defined in init.rc and disabled by default).
-    start ril-daemon
-    start qmuxd
+    # Start RIL on MSM baseband (disabled for now).
+    # start ril-daemon
+    # start qmuxd
     start netmgrd
-    start qmiproxy
+    # start qmiproxy
 
 on property:ro.baseband="unknown"
     start port-bridge
@@ -311,15 +311,15 @@ on property:ro.baseband="unknown"
 service pcm-bridge /system/bin/pcm-bridge /dev/smd7 /dev/ttyGS1
 #/*DTS2011111602662 wangdong 20111117 end >*/
 
-service qmiproxy /system/bin/qmiproxy
-    user radio
-    group radio
-    disabled
+# service qmiproxy /system/bin/qmiproxy
+#     user radio
+#     group radio
+#     disabled
 
-service qmuxd /system/bin/qmuxd
-    user radio
-    group radio
-    disabled
+# service qmuxd /system/bin/qmuxd
+#     user radio
+#     group radio
+#     disabled
 
 service netmgrd /system/bin/netmgrd
     disabled
@@ -499,12 +499,12 @@ service map /system/bin/sdptool add --channel=16 MAS
     disabled
     oneshot
 
-service ril-daemon1 /system/bin/rild -c 1
-    socket rild1 stream 660 root radio
-    socket rild-debug1 stream 660 radio system
-    user root
-    disabled
-    group radio cache inet misc audio sdcard_rw qcom_oncrpc diag
+# service ril-daemon1 /system/bin/rild -c 1
+#     socket rild1 stream 660 root radio
+#     socket rild-debug1 stream 660 radio system
+#     user root
+#     disabled
+#     group radio cache inet misc audio sdcard_rw qcom_oncrpc diag
 
 service profiler_daemon /system/bin/profiler_daemon
     user root
@@ -537,3 +537,40 @@ service sleeplogcat /system/bin/sleeplogcat -t 10 -p /sdcard/sleeplog/
 #/* < DTS2012022201738 zhangzhengxue 20120227 begin */
 #/* delete 6 lines, the service test_diag has already defined in init.rc */
 #/* DTS2012022201738 zhangzhengxue 20120227 end > */
+
+#/* < DTS2011111007245 wanghao 20111110 begin */
+service wlan_detect /system/bin/wlan_detect
+    user root
+    group root
+    oneshot
+#/* DTS2011111007245 wanghao 20111110 end > */
+
+#/* < DTS2011121504967 wanghao 20111215 begin */
+#/* < DTS2011100803980 wanghao 20111008 begin */
+#service wpa_supplicant /system/bin/ath_supplicant -Dar6003 -ieth0 -W -c/data/misc/wifi/wpa_supplicant.conf 
+#    disabled
+#    oneshot
+
+service wpa_supplicant /system/bin/wpa_supplicant \
+    -Dwext -ieth0 -c/data/misc/wifi/wpa_supplicant.conf \
+    -puse_p2p_group_interface=0
+    class main
+    socket wpa_eth0 dgram 660 wifi wifi
+    disabled
+    oneshot
+# /* < DTS2012011805648 limeng 20120203 begin */
+service ath_supplicant /system/bin/ath_supplicant -Dar6003 -ieth0 -W -c/data/misc/wifi/wpa_supplicant.conf
+    disabled
+    oneshot
+# /* DTS2012011805648 limeng 20120203 end > */
+#/* < DTS2012030506477 huangpei 20120326 begin */
+service dhcpcd_eth0 /system/bin/dhcpcd -BKL 
+    disabled 
+    oneshot
+    
+service iprenew_eth0 /system/bin/dhcpcd -n 
+    disabled 
+    oneshot
+#/* DTS2012030506477 huangpei 20120326 end > */
+#/* DTS2011100803980 wanghao 20111008 end > */
+#/* DTS2011121504967 wanghao 20111215 end > */

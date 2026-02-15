@@ -1,7 +1,8 @@
 ## RIL related stuff
-bin/qmuxd
-bin/qmiproxy
-bin/rild
+# RIL disabled for now
+# bin/qmuxd
+# bin/qmiproxy
+# bin/rild
 lib/libauth.so
 lib/libcm.so
 lib/libdiag.so
@@ -17,11 +18,11 @@ lib/libpbmlib.so
 lib/libqmiservices.so
 lib/libqmi.so
 lib/libqueue.so
-lib/libreference-ril.so
-lib/libril.so
-lib/libril-qc-1.so
-lib/libril-qc-qmi-1.so
-lib/libril-qcril-hook-oem.so
+# lib/libreference-ril.so
+# lib/libril.so
+# lib/libril-qc-1.so
+# lib/libril-qc-qmi-1.so
+# lib/libril-qcril-hook-oem.so
 lib/libwms.so
 lib/libwmsts.so
 lib/libshareril.so
