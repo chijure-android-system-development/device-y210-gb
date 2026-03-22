@@ -106,6 +106,15 @@ on boot
     #/* DTS2011121504967 wanghao 20111215 end > */
     #/* DTS2011122402005 wanghao 20111224 end > */
 
+    # Match stock sensor node permissions after the driver creates them.
+    wait /dev/accel
+    chmod 0664 /dev/accel
+    chown system system /dev/accel
+    wait /dev/light
+    chmod 0664 /dev/light
+    wait /dev/proximity
+    chmod 0664 /dev/proximity
+
     # RIL device permissions (match stock expectations)
     chmod 0660 /dev/smd0
     chown system system /dev/smd0
@@ -228,7 +237,7 @@ on property:ro.emmc=1
     start rmt_storage
 
 service hciattach /system/bin/sh /system/etc/init.qcom.bt.sh
-    user bluetooth
+    user root
     group qcom_oncrpc bluetooth net_bt_admin
     disabled
     oneshot
@@ -424,6 +433,7 @@ service qcom-wifi /system/bin/sh /system/etc/init.qcom.wifi.sh
     oneshot
 
 on property:init.svc.bootanim=stopped
+    exec /system/bin/service call window 12 i32 1
     start qcom-post-boot
 
 service atfwd /system/bin/ATFWD-daemon

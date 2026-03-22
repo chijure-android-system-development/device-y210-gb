@@ -28,6 +28,7 @@
 #/*< DTS2011081800819 zhangyun 20110818 begin*/
 
 BLUETOOTH_SLEEP_PATH=/proc/bluetooth/sleep/proto
+CHIP_POWER_PATH=/sys/class/rfkill/rfkill0/state
 LOG_TAG="bcm-bluetooth"
 LOG_NAME="${0}:"
 
@@ -52,13 +53,27 @@ failed ()
 start_hciattach ()
 {
   echo "start_hciattach +"
-  # 1 means enable bluetooth driver sleep
-  echo 1 > $BLUETOOTH_SLEEP_PATH
+  # Power the Broadcom combo chip before patchram; some kernels do not
+  # expose the legacy bluetooth_power sysfs path but do provide rfkill.
+  if [ -e "$CHIP_POWER_PATH" ]; then
+    echo 1 > "$CHIP_POWER_PATH"
+  else
+    loge "missing chip power path: $CHIP_POWER_PATH"
+  fi
+
+  # Older Huawei userspace expected this proc node, but the current kernel
+  # may not expose it. Missing it should not block HCI bring-up.
+  if [ -e "$BLUETOOTH_SLEEP_PATH" ]; then
+    echo 1 > "$BLUETOOTH_SLEEP_PATH"
+  else
+    logi "skip sleep enable, path missing: $BLUETOOTH_SLEEP_PATH"
+  fi
   echo "start_hciattach pid"
-  #/* < DTS2011092604209 kangyanjun 20110926 begin */
-  #open bluetooth sleep func 
-  /system/bin/brcm_patchram_plus -d --enable_hci --enable_lpm --baudrate 3000000 --bd_addr 00:18:82:23:76:1d --patchram /system/etc/bluetooth/BCM4330.hcd /dev/ttyHS0 &
-  #/* DTS2011092604209 kangyanjun 20110926 end > */
+  if [ -x /system/bin/hciattach_check ]; then
+    /system/bin/hciattach_check /dev/ttyHS0 any 3000000 flow &
+  else
+    /system/bin/brcm_patchram_plus -d --enable_hci --enable_lpm --baudrate 3000000 --bd_addr 00:18:82:23:76:1d --patchram /system/etc/bluetooth/BCM4330.hcd /dev/ttyHS0 &
+  fi
 
   hciattach_pid=$!
   loge "start_hciattach: pid = $hciattach_pid"
@@ -70,7 +85,12 @@ kill_hciattach ()
   logi "kill_hciattach: pid = $hciattach_pid"
   ## careful not to kill zero or null!
   kill -TERM $hciattach_pid
-  echo 0 > $BLUETOOTH_SLEEP_PATH
+  if [ -e "$BLUETOOTH_SLEEP_PATH" ]; then
+    echo 0 > "$BLUETOOTH_SLEEP_PATH"
+  fi
+  if [ -e "$CHIP_POWER_PATH" ]; then
+    echo 0 > "$CHIP_POWER_PATH"
+  fi
   # this shell doesn't exit now -- wait returns for normal exit
   logi "kill_hciattach  -"
 }

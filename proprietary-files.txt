@@ -47,7 +47,6 @@ lib/libmmparser_divxdrmlib.so
 lib/liboeminfo.so
 lib/liboem_rapi.so
 
-lib/hw/sensors.default.so
 
 # Graphics / GPU (Adreno 200 / MSM7x27A)
 etc/firmware/yamato_pfp.fw
@@ -59,6 +58,7 @@ lib/egl/libGLESv2_adreno200.so
 lib/egl/libq3dtools_adreno200.so
 lib/hw/copybit.msm7k.so
 lib/hw/gralloc.msm7k.so
+lib/hw/sensors.default.so
 lib/libgsl.so
 
 ## Camera proprietaries
@@ -99,6 +99,7 @@ lib/libomx_amrdec_sharedlibrary.so
 
 # misc
 bin/brcm_patchram_plus_check
+bin/hciattach_check
 bin/compassd
 bin/load_oemlogo
 bin/modempre

@@ -91,6 +91,12 @@ on post-fs
     chown system system /sys/devices/platform/msm_sdcc.3/polling
     chown system system /sys/devices/platform/msm_sdcc.4/polling
 
+    # Keep KGSL accessible for userspace EGL clients on CM7.
+    chmod 0666 /dev/kgsl
+    chmod 0666 /dev/kgsl-3d0
+    chown root root /dev/kgsl
+    chown root root /dev/kgsl-3d0
+
 #/* < DTS2011082001050  liujinggang 20110822 begin */
 #/* we change the following lines to change the light and  proximity mode to pass the AT&T test
     chmod 0664 /dev/light
@@ -274,6 +280,7 @@ chmod 0664 /dev/compass_dev
 #/* DTS2012011003827 zhangmin 20120110 end > */
 chmod 0664 /dev/gyro
 #/* DTS2011082001050  liujinggang 20110822 end > */
+
 
 #/*<DTS2012053006935 Sync <DTS2011032602952  wanghoutian> 20120601 liaihua begin> */
 #add sprint recovery service
