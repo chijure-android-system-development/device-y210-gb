@@ -16,10 +16,9 @@ PRODUCT_PACKAGES += \
     libmm-omxcore \
     libOmxCore
 
-# Graphics 
+# Graphics
 PRODUCT_PACKAGES += \
-   gralloc.y210 \
-   copybit.y210
+    gralloc.y210
 
 # Audio
 PRODUCT_PACKAGES += \
@@ -31,7 +30,8 @@ PRODUCT_PACKAGES += \
 # Other
 PRODUCT_PACKAGES += \
     lights.y210 \
-    gps.y210
+    gps.y210 \
+    Y210ProjectMenu
 
 ifeq ($(TARGET_PREBUILT_KERNEL),)
 	LOCAL_KERNEL := device/huawei/y210/kernel
@@ -63,7 +63,10 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/init.qcom.sh:root/init.qcom.sh \
     device/huawei/y210/prebuilt/init.huawei.usb.rc:root/init.huawei.usb.rc \
     device/huawei/y210/prebuilt/system/etc/init.qcom.bt.sh:system/etc/init.qcom.bt.sh \
-    device/huawei/y210/prebuilt/system/etc/wifi/wpa_supplicant.conf:system/etc/wifi/wpa_supplicant.conf
+    device/huawei/y210/prebuilt/system/etc/wifi/wpa_supplicant.conf:system/etc/wifi/wpa_supplicant.conf \
+    device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
+    device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
+    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog
 
 # Wi-Fi firmware and module (Qualcomm/Atheros)
 PRODUCT_COPY_FILES += \
