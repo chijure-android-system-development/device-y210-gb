@@ -82,6 +82,7 @@ BOARD_KERNEL_BASE := 0x00200000
 BOARD_KERNEL_PAGESIZE := 4096
 
 TARGET_PREBUILT_KERNEL := device/huawei/y210/kernel
+BOARD_HAS_EXTRA_SYS_PROPS := true
 
 TARGET_RECOVERY_INITRC := device/huawei/y210/recovery/etc/init.rc
 # BOARD_DATA_DEVICE := /dev/block/mmcblk0p13

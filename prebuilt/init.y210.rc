@@ -91,12 +91,6 @@ on post-fs
     chown system system /sys/devices/platform/msm_sdcc.3/polling
     chown system system /sys/devices/platform/msm_sdcc.4/polling
 
-    # Keep KGSL accessible for userspace EGL clients on CM7.
-    chmod 0666 /dev/kgsl
-    chmod 0666 /dev/kgsl-3d0
-    chown root root /dev/kgsl
-    chown root root /dev/kgsl-3d0
-
 #/* < DTS2011082001050  liujinggang 20110822 begin */
 #/* we change the following lines to change the light and  proximity mode to pass the AT&T test
     chmod 0664 /dev/light
@@ -140,28 +134,8 @@ on post-fs
     mkdir /data/radio 0770 radio radio
 #/* < DTS2011121504967 wanghao 20111215 begin */
 #/* < DTS2011100803980 wanghao 20111008 begin */
-    #create  WIFI filesystem structure
-#/* < DTS2011111007245 wanghao 20111110 begin */
-    mkdir /data/misc/wifi/sockets 0775
-    chown wifi wifi /data/misc/wifi/sockets
-    mkdir /data/misc/wpa_supplicant 0775
-    chown wifi wifi /data/misc/wpa_supplicant
-    
-    mkdir /data/misc/dhcp 0775 system system
-#/* < DTS2012021301035 limeng 20120213 begin */
-    mkdir /data/misc/wifi/load
-    chmod 0775 /data/misc/wifi/load
-    chown system system /data/misc/wifi/load/
-    # Keep a local copy for legacy wlan_tool loader path.
-    copy /system/wifi/ar6000.ko /data/misc/wifi/load/ar6000.ko
-    chown system system /data/misc/wifi/load/ar6000.ko
-    chmod 0644 /data/misc/wifi/load/ar6000.ko
-    copy /system/wifi/ath6k/caldata_MSM7225A_Y210.bin /data/misc/wifi/load/caldata.bin
-    chown system system /data/misc/wifi/load/caldata.bin
-    chmod 0660 /data/misc/wifi/load/caldata.bin
-#/* DTS2012021301035 limeng 20120213 end > */
-    mkdir /data/misc/wifi/bin 0775 system system
-#/* DTS2011111007245 wanghao 20111110 end > */
+    # Wi-Fi runtime staging moved to init.huawei.rc on boot.
+    # This tree imported the setup here while /data was still too early.
 
 #/* DTS2011100803980 wanghao 20111008 end > */
 #/* DTS2011121504967 wanghao 20111215 end > */
@@ -238,7 +212,6 @@ on cust
     # DTS2012042302552 jihongwen 20120502 begin
     chmod 0660 /dev/assd
     chown smartcard smartcard /dev/assd
-    # DTS2012042302552 jihongwen 20120502 end
 
 on boot
 # /*< DTS2011111900490 zhangyancun 201119 begin */

@@ -25,7 +25,7 @@ MODE_WLAN="insmod"
 MODE_P2P="insmod_p2p"
 P2P_ARGS=`getprop wlan.driver.args "targetconf=mobile devmode=sta submode=p2pdev ifname=$IFNAME"`
 TAGS="wlan_tool"
-MODULE_CHECK="ls /sys/bus/sdio/drivers/ar6k_wlan"
+MODULE_CHECK="test -d /sys/bus/sdio/drivers/ar6k_wlan"
 WLAN_ENABLE_CHECK="wmiconfig -i $IFNAME --getRTS"
 DRIVER_PROP_NAME="wlan.driver.status"
 APMODE_PROP_NAME="wlan.driver.apmode"
@@ -157,7 +157,8 @@ ap_reload() {
 }
 # for HotSpot -
 init() {
-    setprop wifi.interface wlan0
+    # Keep the interface name aligned with the Y210 userspace and init services.
+    setprop wifi.interface $IFNAME
     do_setprop $APMODE_PROP_NAME "unloaded"
     mkdir /data/misc/wifi/wpa_supplicant
     mkdir /data/misc/wifi/hostapd

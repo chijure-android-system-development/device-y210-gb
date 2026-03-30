@@ -36,6 +36,11 @@
 # This script will get called after post bootup.
 target=`getprop ro.product.device`
 case "$target" in
+    y210|hwy210*|msm7625a*)
+        # Y210 keeps the Atheros userspace assets under /data/misc/wifi.
+        # Pre-stage the legacy links before the framework asks to load the driver.
+        /system/bin/wlan_detect
+        ;;
     msm8960*)
         # We need to make sure the WCNSS platform driver is running.
         # The WCNSS platform driver can either be built as a loadable
