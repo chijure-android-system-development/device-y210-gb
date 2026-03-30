@@ -66,7 +66,8 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/system/etc/wifi/wpa_supplicant.conf:system/etc/wifi/wpa_supplicant.conf \
     device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
     device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
-    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog
+    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog \
+    device/huawei/y210/prebuilt/system/lib/libprojectmenu.so:system/lib/libprojectmenu.so
 
 # Wi-Fi firmware and module (Qualcomm/Atheros)
 PRODUCT_COPY_FILES += \
