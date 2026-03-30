@@ -58,6 +58,18 @@ if [ -z "$POWER_CLASS" ]; then
   POWER_CLASS=2
 fi
 
+# This target only works if the BT block is powered before hci_qcomm_init.
+if [ -e /sys/class/rfkill/rfkill0/state ]; then
+  echo 1 > /sys/class/rfkill/rfkill0/state
+fi
+
+if [ -e /sys/module/bluetooth_power/parameters/power ]; then
+  echo 1 > /sys/module/bluetooth_power/parameters/power
+fi
+
+# Give the controller time to power up before vendor init.
+sleep 1
+
 logi "Transport : $TRANSPORT"
 
 case $POWER_CLASS in

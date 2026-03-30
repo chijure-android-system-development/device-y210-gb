@@ -152,23 +152,3 @@ case "$emmc_boot"
         chown system /sys/devices/platform/rs300100a7.65536/sync_sts
     ;;
 esac
-
-# Keep KGSL nodes accessible even if uevent recreates them late in boot.
-(
-    i=0
-    while [ $i -lt 10 ]; do
-        if [ -e /dev/kgsl-3d0 ]; then
-            chmod 0666 /dev/kgsl-3d0
-            chown root /dev/kgsl-3d0
-        fi
-        if [ ! -e /dev/kgsl ] && [ -e /dev/kgsl-3d0 ]; then
-            ln -s /dev/kgsl-3d0 /dev/kgsl
-        fi
-        if [ -e /dev/kgsl ]; then
-            chmod 0666 /dev/kgsl
-            chown root /dev/kgsl
-        fi
-        i=$((i + 1))
-        sleep 1
-    done
-) &
