@@ -137,14 +137,16 @@ static void *disp_loop(void *ptr)
     while (1) {
         pthread_mutex_lock(&(m->qlock));
 
-        // wait (sleep) while display queue is empty;
-        if (m->disp.isEmpty()) {
+        // Wait until a real buffer is queued. pthread condvars may wake spuriously.
+        while (m->disp.isEmpty()) {
             pthread_cond_wait(&(m->qpost),&(m->qlock));
         }
 
         // dequeue next buff to display and lock it
         nxtBuf = m->disp.getHeadValue();
         m->disp.pop();
+        LOGI("fbq: dequeue idx=%d buf=%p cur_buf=%d currentIdx=%d queue_size=%d",
+             nxtBuf.idx, nxtBuf.buf, cur_buf, m->currentIdx, (int)m->disp.size());
         pthread_mutex_unlock(&(m->qlock));
 
         // post buf out to display synchronously
@@ -153,6 +155,8 @@ static void *disp_loop(void *ptr)
         const size_t offset = hnd->base - m->framebuffer->base;
         m->info.activate = FB_ACTIVATE_VBL;
         m->info.yoffset = offset / m->finfo.line_length;
+        LOGI("fbq: ioctl-pre idx=%d buf=%p cur_buf=%d currentIdx=%d yoffset=%d",
+             nxtBuf.idx, nxtBuf.buf, cur_buf, m->currentIdx, m->info.yoffset);
 
 #if defined(HDMI_DUAL_DISPLAY)
         pthread_mutex_lock(&m->overlayLock);
@@ -164,20 +168,22 @@ static void *disp_loop(void *ptr)
         if (ioctl(m->framebuffer->fd, FBIOPUT_VSCREENINFO, &m->info) == -1) {
             LOGE("ERROR FBIOPUT_VSCREENINFO failed; frame not displayed");
         }
+        LOGI("fbq: ioctl-post idx=%d buf=%p cur_buf=%d currentIdx=%d",
+             nxtBuf.idx, nxtBuf.buf, cur_buf, m->currentIdx);
 
-        if (cur_buf == -1) {
-            pthread_mutex_lock(&(m->avail[nxtBuf.idx].lock));
-            m->avail[nxtBuf.idx].is_avail = true;
-            pthread_cond_signal(&(m->avail[nxtBuf.idx].cond));
-            pthread_mutex_unlock(&(m->avail[nxtBuf.idx].lock));
-        } else {
+        if (cur_buf != -1) {
             pthread_mutex_lock(&(m->avail[cur_buf].lock));
             m->avail[cur_buf].is_avail = true;
             pthread_cond_signal(&(m->avail[cur_buf].cond));
             pthread_mutex_unlock(&(m->avail[cur_buf].lock));
-
+            LOGI("fbq: avail-true idx=%d buf=%p cur_buf=%d currentIdx=%d",
+                 cur_buf, nxtBuf.buf, cur_buf, m->currentIdx);
         }
+        LOGI("fbq: curbuf-before-update old=%d new=%d currentIdx=%d buf=%p",
+             cur_buf, nxtBuf.idx, m->currentIdx, nxtBuf.buf);
         cur_buf = nxtBuf.idx;
+        LOGI("fbq: curbuf-after-update cur_buf=%d currentIdx=%d buf=%p",
+             cur_buf, m->currentIdx, nxtBuf.buf);
     }
     return NULL;
 }
@@ -385,11 +391,14 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
     private_handle_t const* hnd = reinterpret_cast<private_handle_t const*>(buffer);
     private_module_t* m = reinterpret_cast<private_module_t*>(
             dev->common.module);
+    nxtIdx = (m->currentIdx + 1) % NUM_BUFFERS;
+    LOGI("fbq: post-enter buf=%p currentBuf=%p currentIdx=%d swapInterval=%d nxtIdx=%d flags=0x%08x",
+         buffer, m->currentBuffer, m->currentIdx, m->swapInterval, nxtIdx,
+         hnd->flags);
 
     if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER) {
 
         reuse = false;
-        nxtIdx = (m->currentIdx + 1) % NUM_BUFFERS;
 
         if (m->swapInterval == 0) {
             // if SwapInterval = 0 and no buffers available then reuse
@@ -413,12 +422,16 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
             pthread_mutex_lock(&(m->avail[nxtIdx].lock));
             m->avail[nxtIdx].is_avail = false;
             pthread_mutex_unlock(&(m->avail[nxtIdx].lock));
+            LOGI("fbq: avail-false idx=%d buf=%p currentIdx=%d curBuf=%p",
+                 nxtIdx, buffer, m->currentIdx, m->currentBuffer);
 
             qb.idx = nxtIdx;
             qb.buf = buffer;
             pthread_mutex_lock(&(m->qlock));
             m->disp.push(qb);
             pthread_cond_signal(&(m->qpost));
+            LOGI("fbq: enqueue idx=%d buf=%p currentIdx=%d queue_size=%d",
+                 qb.idx, qb.buf, m->currentIdx, (int)m->disp.size());
             pthread_mutex_unlock(&(m->qlock));
 
             // LCDC: after new buffer grabbed by MDP can unlock previous
@@ -427,17 +440,24 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
                 if (m->swapInterval != 0) {
                     pthread_mutex_lock(&(m->avail[m->currentIdx].lock));
                     if (! m->avail[m->currentIdx].is_avail) {
+                        LOGI("fbq: wait-avail idx=%d buf=%p currentIdx=%d currentBuf=%p",
+                             m->currentIdx, buffer, m->currentIdx, m->currentBuffer);
                         pthread_cond_wait(&(m->avail[m->currentIdx].cond),
                                          &(m->avail[m->currentIdx].lock));
                         m->avail[m->currentIdx].is_avail = true;
                     }
                     pthread_mutex_unlock(&(m->avail[m->currentIdx].lock));
                 }
+                LOGI("fbq: unlock-current idx=%d currentBuf=%p newBuf=%p",
+                     m->currentIdx, m->currentBuffer, buffer);
                 m->base.unlock(&m->base, m->currentBuffer);
             }
             m->currentBuffer = buffer;
             m->currentIdx = nxtIdx;
         } else {
+            if (m->currentBuffer)
+                LOGI("fbq: unlock-current idx=%d currentBuf=%p newBuf=%p reuse=1",
+                     m->currentIdx, m->currentBuffer, buffer);
             if (m->currentBuffer)
                 m->base.unlock(&m->base, m->currentBuffer);
             m->base.lock(&m->base, buffer,
@@ -460,13 +480,7 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
                 0, 0, m->info.xres, m->info.yres,
                 &buffer_vaddr);
 
-        //memcpy(fb_vaddr, buffer_vaddr, m->finfo.line_length * m->info.yres);
-
-        msm_copy_buffer(
-                m->framebuffer, m->framebuffer->fd,
-                m->info.xres, m->info.yres, m->fbFormat,
-                m->info.xoffset, m->info.yoffset,
-                m->info.width, m->info.height);
+        memcpy(fb_vaddr, buffer_vaddr, m->finfo.line_length * m->info.yres);
 
         m->base.unlock(&m->base, buffer); 
         m->base.unlock(&m->base, m->framebuffer); 
@@ -686,22 +700,16 @@ int mapFrameBufferLocked(struct private_module_t* module)
         pthread_mutex_init(&(module->avail[i].lock), NULL);
         pthread_cond_init(&(module->avail[i].cond), NULL);
         module->avail[i].is_avail = true;
-    }    
-
-    /* create display update thread */
-    pthread_t thread1;
-    if (pthread_create(&thread1, NULL, &disp_loop, (void *) module)) {
-         return -errno;
     }
 
     /*
-     * map the framebuffer
+     * map the framebuffer before the display thread can consume queued buffers.
      */
-
     int err;
     size_t fbSize = roundUpToPageSize(finfo.line_length * info.yres_virtual);
     module->framebuffer = new private_handle_t(dup(fd), fbSize,
-            private_handle_t::PRIV_FLAGS_USES_PMEM);
+            private_handle_t::PRIV_FLAGS_USES_PMEM |
+            private_handle_t::PRIV_FLAGS_FRAMEBUFFER);
 
     module->numBuffers = info.yres_virtual / info.yres;
     module->bufferMask = 0;
@@ -713,6 +721,12 @@ int mapFrameBufferLocked(struct private_module_t* module)
     }
     module->framebuffer->base = intptr_t(vaddr);
     memset(vaddr, 0, fbSize);
+
+    /* create display update thread */
+    pthread_t thread1;
+    if (pthread_create(&thread1, NULL, &disp_loop, (void *) module)) {
+         return -errno;
+    }
 
 #if defined(HDMI_DUAL_DISPLAY)
     /* Overlay for HDMI*/

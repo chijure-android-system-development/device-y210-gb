@@ -23,6 +23,7 @@
 #include <linux/fb.h>
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
@@ -127,18 +128,93 @@ static int get_format(int format) {
 //    case HAL_PIXEL_FORMAT_YCrCb_422_SP:  return MDP_Y_CBCR_H2V1;
     case HAL_PIXEL_FORMAT_YCrCb_420_SP:  return MDP_Y_CBCR_H2V2;
     case HAL_PIXEL_FORMAT_YCbCr_422_SP:  return MDP_Y_CRCB_H2V1;
-//    case HAL_PIXEL_FORMAT_YCbCr_420_SP:  return MDP_Y_CRCB_H2V2;
+    case HAL_PIXEL_FORMAT_YCbCr_420_SP:  return MDP_Y_CRCB_H2V2;
     }
     return -1;
+}
+
+copybit_image_t const* convertYV12toYCrCb420SP(copybit_image_t const* rhs)
+{
+    static copybit_image_t converted;
+
+    if (!rhs || rhs->format != HAL_PIXEL_FORMAT_YV12) {
+        return rhs;
+    }
+
+    private_handle_t* hnd = private_handle_t::dynamicCast(rhs->handle);
+    if (!hnd) {
+        LOGE("cbq: Invalid handle");
+        return NULL;
+    }
+
+    uint8_t* base = (uint8_t*) rhs->base;
+    if (!base && hnd->base) {
+        base = (uint8_t*)(hnd->base + hnd->offset);
+    }
+    if (!base) {
+        LOGE("cbq: Error copybit conversion from yv12 failed (null base)");
+        return NULL;
+    }
+
+    const uint32_t stride = (rhs->w + 15) & ~15;
+    const uint32_t c_stride = ((stride / 2) + 15) & ~15;
+    const uint32_t y_size = stride * rhs->h;
+    const uint32_t c_size = c_stride * (rhs->h / 2);
+    const uint32_t temp_size = c_size * 2;
+
+    uint8_t* tmp = (uint8_t*)malloc(temp_size);
+    if (!tmp) {
+        LOGE("cbq: Failed to allocate temporary buffer");
+        return NULL;
+    }
+
+    uint8_t* cr = base + y_size;
+    uint8_t* cb = cr + c_size;
+    uint8_t* dst = tmp;
+
+    for (uint32_t y = 0; y < (rhs->h / 2); y++) {
+        uint8_t* cr_row = cr + (y * c_stride);
+        uint8_t* cb_row = cb + (y * c_stride);
+        for (uint32_t x = 0; x < c_stride; x++) {
+            *dst++ = cr_row[x];
+            *dst++ = cb_row[x];
+        }
+    }
+
+    memcpy(base + y_size, tmp, temp_size);
+    free(tmp);
+
+    converted = *rhs;
+    converted.format = HAL_PIXEL_FORMAT_YCrCb_420_SP;
+
+    LOGI("cbq: yv12-convert w=%u h=%u stride=%u c_stride=%u offset=%d fd=%d",
+         rhs->w, rhs->h, stride, c_stride, hnd->offset, hnd->fd);
+
+    return &converted;
 }
 
 /** convert from copybit image to mdp image structure */
 static void set_image(struct mdp_img *img, const struct copybit_image_t *rhs) 
 {
-    private_handle_t* hnd = (private_handle_t*)rhs->handle;
+    rhs = convertYV12toYCrCb420SP(rhs);
+    if (!rhs) {
+        memset(img, 0, sizeof(*img));
+        img->format = (uint32_t)-1;
+        return;
+    }
+
+    private_handle_t* hnd = private_handle_t::dynamicCast(rhs->handle);
+    if (!hnd) {
+        LOGE("cbq: Invalid handle");
+        memset(img, 0, sizeof(*img));
+        img->format = (uint32_t)-1;
+        return;
+    }
+
+    int mdp_format = get_format(rhs->format);
     img->width      = rhs->w;
     img->height     = rhs->h;
-    img->format     = get_format(rhs->format);
+    img->format     = mdp_format;
     img->offset     = hnd->offset;
     #if defined(COPYBIT_MSM7K)
         #if defined(USE_ASHMEM) && (TARGET_7x27)
@@ -149,6 +225,8 @@ static void set_image(struct mdp_img *img, const struct copybit_image_t *rhs)
     #else
         img->memory_id  = hnd->fd;
     #endif
+    LOGI("cbq: copybit hal=%d w=%u h=%u offset=%u mdp=%d memory_id=%d",
+         rhs->format, rhs->w, rhs->h, hnd->offset, mdp_format, img->memory_id);
 }
 /** setup rectangles */
 static void set_rects(struct copybit_context_t *dev,
@@ -399,6 +477,10 @@ static int stretch_copybit(
             set_infos(ctx, req, flags);
             set_image(&req->dst, dst);
             set_image(&req->src, src);
+            if ((int)req->dst.format < 0 || (int)req->src.format < 0) {
+                LOGE("cbq: Error copybit conversion from yv12 failed");
+                return -EINVAL;
+            }
             set_rects(ctx, req, dst_rect, src_rect, &clip, 0);//src->padding);
 
             if (req->src_rect.w<=0 || req->src_rect.h<=0)

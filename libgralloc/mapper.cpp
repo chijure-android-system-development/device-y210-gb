@@ -25,8 +25,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
-#include <linux/ashmem.h>
-
 #include <cutils/log.h>
 #include <cutils/atomic.h>
 #include <cutils/ashmem.h>
@@ -50,12 +48,66 @@ pid_t gettid() { return syscall(__NR_gettid);}
 #undef __KERNEL__
 #endif
 
-#define ASHMEM_CACHE_CLEAN_RANGE        _IO(__ASHMEMIOC, 12)
 #define GRALLOC_MODULE_PERFORM_DECIDE_PUSH_BUFFER_HANDLING 0x080000002
 
 // End of CAF values
 
 /*****************************************************************************/
+
+static int detect_pmem_private_flags_from_fd(int fd)
+{
+    char fd_path[64];
+    char target[PATH_MAX];
+    snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", fd);
+    ssize_t len = readlink(fd_path, target, sizeof(target) - 1);
+    if (len < 0) {
+        return private_handle_t::PRIV_FLAGS_USES_PMEM;
+    }
+    target[len] = '\0';
+    if (!strcmp(target, "/dev/pmem_adsp")) {
+        return private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP;
+    }
+    return private_handle_t::PRIV_FLAGS_USES_PMEM;
+}
+
+/*****************************************************************************/
+
+static int sync_pmem_buffer(private_handle_t* hnd)
+{
+    if (hnd == NULL ||
+            !((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) ||
+              (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP))) {
+        return 0;
+    }
+
+    const char* memType =
+            (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP) ?
+            "pmem_adsp" : "pmem";
+    struct pmem_addr pmem_addr;
+    pmem_addr.vaddr = hnd->base;
+    pmem_addr.offset = hnd->offset;
+    pmem_addr.length = hnd->size;
+    LOGI("flush try ioctl=PMEM_CLEAN_CACHES type=%s fd=%d offset=%d size=%d "
+         "flags=0x%08x fb=%d pmem=%d pmem_adsp=%d ashmem=%d",
+         memType, hnd->fd, hnd->offset, hnd->size, hnd->flags,
+         !!(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER),
+         !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM),
+         !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP),
+         !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM));
+    int err = ioctl(hnd->fd, PMEM_CLEAN_CACHES, &pmem_addr);
+    if (err < 0 && (errno == ENOTTY || errno == EINVAL)) {
+        struct pmem_region region;
+        region.offset = hnd->offset;
+        region.len = hnd->size;
+        LOGW("flush fallback ioctl=PMEM_CACHE_FLUSH type=%s fd=%d offset=%d "
+             "size=%d errno=%d", memType, hnd->fd, hnd->offset, hnd->size,
+             errno);
+        err = ioctl(hnd->fd, PMEM_CACHE_FLUSH, &region);
+    }
+    LOGI("flush result type=%s fd=%d offset=%d size=%d err=%d flags=0x%08x",
+         memType, hnd->fd, hnd->offset, hnd->size, err, hnd->flags);
+    return err;
+}
 
 static int gralloc_map(gralloc_module_t const* module,
         buffer_handle_t handle,
@@ -185,6 +237,7 @@ int terminateBuffer(gralloc_module_t const* module,
     if (hnd->lockState & private_handle_t::LOCK_STATE_MAPPED) {
         // this buffer was mapped, unmap it now
         if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM ||
+            hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP ||
             hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM) {
             if (hnd->pid != getpid()) {
                 // ... unless it's a "master" pmem buffer, that is a buffer
@@ -249,11 +302,18 @@ int gralloc_lock(gralloc_module_t const* module,
         hnd->writeOwner = gettid();
     }
 
-    // if requesting sw write for non-framebuffer handles, flag for
-    // flushing at unlock
-
+    // Only physically contiguous buffers need explicit cache maintenance here.
     if ((usage & GRALLOC_USAGE_SW_WRITE_MASK) &&
-            !(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)) {
+            !(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER) &&
+            ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) ||
+             (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP))) {
+        LOGI("flush mark fd=%d offset=%d size=%d flags=0x%08x usage=0x%08x "
+             "fb=%d pmem=%d pmem_adsp=%d ashmem=%d",
+             hnd->fd, hnd->offset, hnd->size, hnd->flags, usage,
+             !!(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER),
+             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM),
+             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP),
+             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM));
         hnd->flags |= private_handle_t::PRIV_FLAGS_NEEDS_FLUSH;
     }
 
@@ -288,16 +348,21 @@ int gralloc_unlock(gralloc_module_t const* module,
 
     if (hnd->flags & private_handle_t::PRIV_FLAGS_NEEDS_FLUSH) {
         int err;
-        if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) {
-            struct pmem_addr pmem_addr;
-            pmem_addr.vaddr = hnd->base;
-            pmem_addr.offset = hnd->offset;
-            pmem_addr.length = hnd->size;
-            err = ioctl( hnd->fd, PMEM_CLEAN_CACHES,  &pmem_addr);
-        } else if ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM)) {
-            unsigned long addr = hnd->base + hnd->offset;
-            err = ioctl(hnd->fd, ASHMEM_CACHE_CLEAN_RANGE, NULL);
-        }         
+        LOGI("flush unlock begin fd=%d offset=%d size=%d flags=0x%08x "
+             "fb=%d pmem=%d pmem_adsp=%d ashmem=%d",
+             hnd->fd, hnd->offset, hnd->size, hnd->flags,
+             !!(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER),
+             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM),
+             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP),
+             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM));
+        if ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) ||
+                (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP)) {
+            err = sync_pmem_buffer(hnd);
+        } else {
+            LOGW("flush unlock skip non-pmem fd=%d offset=%d size=%d flags=0x%08x",
+                 hnd->fd, hnd->offset, hnd->size, hnd->flags);
+            err = 0;
+        }
 
         LOGE_IF(err < 0, "cannot flush handle %p (offs=%x len=%x)\n",
                 hnd, hnd->offset, hnd->size);
@@ -352,17 +417,20 @@ int gralloc_perform(struct gralloc_module_t const* module,
             }
 
             native_handle_t** handle = va_arg(args, native_handle_t**);
+            int inferred_flags = detect_pmem_private_flags_from_fd(fd);
             private_handle_t* hnd = (private_handle_t*)native_handle_create(
                     private_handle_t::sNumFds, private_handle_t::sNumInts);
             hnd->magic = private_handle_t::sMagic;
             hnd->fd = fd;
-            hnd->flags = private_handle_t::PRIV_FLAGS_USES_PMEM;
+            hnd->flags = inferred_flags;
             hnd->size = size;
             hnd->offset = offset;
             hnd->base = intptr_t(base) + offset;
             hnd->lockState = private_handle_t::LOCK_STATE_MAPPED;
             hnd->gpuaddr = 0;
             *handle = (native_handle_t *)hnd;
+            LOGI("fmtq: create-handle fd=%d size=%u offset=%u in_flags=0x%08x out_flags=0x%08x",
+                 fd, (unsigned int)size, (unsigned int)offset, inferred_flags, hnd->flags);
             res = 0;
             break;
         }
@@ -376,10 +444,13 @@ int gralloc_perform(struct gralloc_module_t const* module,
             int *useBufferDirectly = va_arg(args, int*);
             size_t *size = va_arg(args, size_t*);
             *size = calculateBufferSize(width, height, format);
-            int conversion = 0;
-            int direct = 0;
             res = decideBufferHandlingMechanism(format, compositionUsed, hasBlitEngine,
                                                 needConversion, useBufferDirectly);
+            LOGI("fmtq: decide format=%d comp=%s conv=%d direct=%d blit=%d size=%u res=%d",
+                 format, compositionUsed ? compositionUsed : "(null)",
+                 needConversion ? *needConversion : -1,
+                 useBufferDirectly ? *useBufferDirectly : -1,
+                 hasBlitEngine, (unsigned int)*size, res);
 	    break;
 	}
 	default:

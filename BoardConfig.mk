@@ -1,4 +1,4 @@
-USE_CAMERA_STUB := true
+USE_CAMERA_STUB := false
 
 # inherit from the proprietary version
 -include vendor/huawei/y210/BoardConfigVendor.mk
@@ -20,7 +20,9 @@ TARGET_BOOTLOADER_BOARD_NAME := y210
 TARGET_OTA_ASSERT_DEVICE := y210,hwy210
 
 # Audio
-# BOARD_PROVIDES_LIBAUDIO := true
+# hardware/msm7k/Android.mk keys off TARGET_PROVIDES_LIBAUDIO to avoid
+# building the generic msm7k audio HAL alongside the device-specific one.
+TARGET_PROVIDES_LIBAUDIO := true
 
 # TARGET_PROVIDES_LIBLIGHTS := true
 

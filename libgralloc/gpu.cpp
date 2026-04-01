@@ -279,6 +279,11 @@ int gpu_context_t::alloc_impl(int w, int h, int format, int usage,
             size  = ALIGN(alignedw*alignedh, 4096);
             size += ALIGN(2 * ALIGN(w/2, 32) * ALIGN(h/2, 32), 4096);
             break;
+        case HAL_PIXEL_FORMAT_YCrCb_420_SP:
+        case HAL_PIXEL_FORMAT_YCbCr_420_SP:
+            size = calculateBufferSize(w, h, format);
+            alignedw = ALIGN(w, 16);
+            break;
         case HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED:   // NV12
             // The chroma plane is subsampled,
             // but the pitch in bytes is unchanged
@@ -306,6 +311,10 @@ int gpu_context_t::alloc_impl(int w, int h, int format, int usage,
 
     if ((ssize_t)size <= 0)
         return -EINVAL;
+
+    LOGI("fmtq: alloc format=%d w=%d h=%d usage=0x%08x size=%u stride=%u alignedw=%u",
+         format, w, h, usage, (unsigned int)size, (unsigned int)alignedw,
+         (unsigned int)alignedw);
 
     int err;
     if (usage & GRALLOC_USAGE_HW_FB) {

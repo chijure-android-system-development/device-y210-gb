@@ -22,8 +22,8 @@ PRODUCT_PACKAGES += \
 
 # Audio
 PRODUCT_PACKAGES += \
-    audio.primary.y210 \
-    audio_policy.y210 \
+    libaudio \
+    libaudiopolicy \
     audio.a2dp.default \
     libaudioutils
 
@@ -64,6 +64,7 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/init.huawei.usb.rc:root/init.huawei.usb.rc \
     device/huawei/y210/prebuilt/system/etc/init.qcom.bt.sh:system/etc/init.qcom.bt.sh \
     device/huawei/y210/prebuilt/system/etc/wifi/wpa_supplicant.conf:system/etc/wifi/wpa_supplicant.conf \
+    device/huawei/y210/prebuilt/system/etc/media_profiles.xml:system/etc/media_profiles.xml \
     device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
     device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
     device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog \

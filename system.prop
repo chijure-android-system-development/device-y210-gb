@@ -26,9 +26,9 @@ net.ntp.timereference=0
 # persist.rild.nitz_short_ons_3=
 # ril.subscription.types=NV,RUIM
 DEVICE_PROVISIONED=1
-debug.sf.hw=0
-debug.composition.7x27A.type=cpu
-debug.composition.7x25A.type=cpu
+debug.sf.hw=1
+debug.composition.7x27A.type=mdp
+debug.composition.7x25A.type=mdp
 # DTS2011122807723 fuxiaowei 20120103 begin
 dalvik.vm.heapsize=24m
 # DTS2011122807723 fuxiaowei 20120103 end
@@ -134,7 +134,7 @@ ro.fm.mulinst.recording.support=false
 ro.config.KeyPassToUser=true
 #System property for msm 
 #
-ro.hw_plat=7x25a
+ro.hw_plat=7x25A
 #/* < DTS2011093001538 yangyuan 20110930 begin */
 #/*<DTS2011121604452 yangyuan 20111217 begin */
 ro.config.fm_type=libqcomfm_if

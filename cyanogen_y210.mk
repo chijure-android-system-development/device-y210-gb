@@ -13,11 +13,13 @@ $(call inherit-product, vendor/cyanogen/products/bcm_fm_radio.mk)
 #
 # Setup device specific product configuration.
 #
-PRODUCT_NAME := Y210
+PRODUCT_NAME := cyanogen_y210
 PRODUCT_BRAND := Huawei
 PRODUCT_DEVICE := y210
 PRODUCT_MODEL := HUAWEI Y210-0151
 PRODUCT_MANUFACTURER := HUAWEI
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.build.product=msm7625a
 # PRODUCT_BUILD_PROP_OVERRIDES += PRODUCT_NAME=y210 BUILD_ID=GRK39F BUILD_DISPLAY_ID=GWK74 BUILD_FINGERPRINT=Huawei/Y210/hwy210-0151:2.3.6/HuaweiY210-0151/C40B855:user/ota-rel-keys,release-keys PRIVATE_BUILD_DESC="passion-user 2.3.6 GRK39F 189904 release-keys"
 
 # Release name and versioning
