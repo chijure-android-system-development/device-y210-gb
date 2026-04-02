@@ -30,6 +30,9 @@ LOCAL_SHARED_LIBRARIES := \
     libmedia \
     libhardware_legacy
 
+LOCAL_C_INCLUDES += \
+    device/huawei/y210/include
+
 ifeq ($TARGET_OS)-$(TARGET_SIMULATOR),linux-true)
 LOCAL_LDLIBS += -ldl
 endif

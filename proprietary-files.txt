@@ -11,6 +11,7 @@ lib/libdss.so
 lib/libgsdi_exp.so
 lib/libgstk_exp.so
 lib/libhwrpc.so
+lib/libaudioeq.so
 lib/libmmgsdilib.so
 lib/libnv.so
 lib/liboncrpc.so

@@ -544,7 +544,8 @@ int AudioHardware::check_and_set_audpp_parameters(char *buf, int size) {
 
     } else if ((buf[0] == 'E') || (buf[0] == 'F') || (buf[0] == 'G')){
         // Get the sample index
-        if ((samp_index = get_sample_index(buf[1]) == -EINVAL)) { audpp_token_error(); return -EINVAL;}
+        samp_index = get_sample_index(buf[1]);
+        if (samp_index == -EINVAL) { audpp_token_error(); return -EINVAL;}
 
         //Pre-Processing features records TX_IIR,AGC,NS (codes 'E','F','G')
         if (buf[0] == 'E')  {
@@ -725,16 +726,23 @@ int AudioHardware::get_audpp_filter(void)
     //Start the acoustic filters data analysis
     current_str = read_buf;
 
-    while (*current_str != (char)EOF)  {
+    int line_no = 0;
+    while (1)  {
         int len;
         next_str = strchr(current_str, '\n');
         if (!next_str)
            break;
         len = next_str - current_str;
         *next_str++ = '\0';
+        line_no++;
 
         //Process the filter data
         if (check_and_set_audpp_parameters(current_str, len)) {
+            LOGE("audpp parse failure line=%d rec=%c%c len=%d text=%s",
+                 line_no,
+                 current_str[0] ? current_str[0] : '?',
+                 current_str[1] ? current_str[1] : '?',
+                 len, current_str);
             LOGI("failed to set audpp parameters, exiting.");
             munmap(read_buf, st.st_size);
             close(csvfd);
