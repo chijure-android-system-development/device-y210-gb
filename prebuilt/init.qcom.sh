@@ -86,10 +86,6 @@ esac
 #
 # Start gpsone_daemon for SVLTE Type I & II devices
 #
-case "$target" in
-        "msm7630_fusion")
-        start gpsone_daemon
-esac
 case "$baseband" in
         "svlte2a")
         start gpsone_daemon
@@ -97,7 +93,7 @@ case "$baseband" in
 esac
 
 case "$target" in
-    "msm7630_surf" | "msm7630_1x" | "msm7630_fusion")
+    "msm7630_surf" | "msm7630_1x")
         insmod /system/lib/modules/ss_mfcinit.ko
         insmod /system/lib/modules/ss_vencoder.ko
         insmod /system/lib/modules/ss_vdecoder.ko

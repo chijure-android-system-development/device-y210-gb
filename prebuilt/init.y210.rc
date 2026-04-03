@@ -10,7 +10,7 @@
     export BOOTCLASSPATH /system/framework/core.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/core-junit.jar:/system/framework/qcnvitems.jar:/system/framework/qcrilhook.jar
     #DTS2012010905526 xueyongxin 20120109 end
 
-# Backwards Compat - XXX: Going away in G*
+# Legacy sdcard symlink kept for Gingerbread compatibility.
     symlink /mnt/sdcard /sdcard
 
     mkdir /system
@@ -22,8 +22,6 @@
     mkdir /cust   
     #/* DTS2011110900187 wangdong 20111031 end> */
     
-    mkdir /persist 0771 system system
-
     #/*< DTS2011100400385 fangxinyong 20111020 begin */
     mkdir /HWUserData 0775 system system
     #/* DTS2011100400385 fangxinyong 20111020 end >*/
@@ -35,7 +33,6 @@ on fs
     chmod 2755 /system/bin/pcscd
     # /* DTS2011122806348 yanzhennan 20120129 end >*/
     # /*< DTS2011121702721 chenxi 20111222 begin */
-    mount yaffs2 mtd@persist /persist nosuid nodev
     mount yaffs2 mtd@persist /persist nosuid nodev
     #/*< DTS2011100400385 fangxinyong 20111020 begin */
     mkdir /data/HWUserData 0777 system system

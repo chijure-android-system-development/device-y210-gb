@@ -56,10 +56,6 @@ case "$target" in
         echo "$arg" > /sys/devices/platform/msm_sdcc.3/polling
         ;;
 
-    "msm7630_fusion")
-        echo "$arg" > /sys/devices/platform/msm_sdcc.3/polling
-        ;;
-
     "msm8660_surf")
         echo "$arg" > /sys/devices/platform/msm_sdcc.4/polling
         ;;

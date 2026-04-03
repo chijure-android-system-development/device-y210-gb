@@ -41,7 +41,7 @@
 #/* DTS2011022301492  yanzhijun 20110223 end >*/ 
 #/* DTS2011091901282 wangdong 20110919 end> */
 
-dev/diag_arm9            0660   radio      radio
+/dev/diag_arm9            0660   radio      radio
 /dev/android_adb          0660   adb        adb
 /dev/android_adb_enable   0660   adb        adb
 /dev/ttyMSM0              0600   bluetooth  bluetooth
@@ -92,7 +92,6 @@ dev/diag_arm9            0660   radio      radio
 /dev/tpa2018d1*           0660   system     audio
 /dev/msm_audpre           0660   system     audio
 /dev/msm_audio_ctl        0660   system     audio
-/dev/htc-acoustic         0660   system     audio
 /dev/vdec                 0660   system     audio
 /dev/tzcom                0660   system     audio
 /dev/qce                  0660   system     audio
@@ -121,7 +120,6 @@ dev/diag_arm9            0660   radio      radio
 /dev/sdioctl1             0640   radio      radio
 /dev/sdioctl2             0640   radio      radio
 /dev/sdioctl3             0640   radio      radio
-/dev/sdioctl4             0640   radio      radio
 /dev/sdioctl4             0640   radio      radio
 /dev/sdioctl5             0640   radio      radio
 /dev/sdioctl6             0640   radio      radio

@@ -29,19 +29,21 @@
 #the hardware reset when early suspend is fixed up, resume the qualcomm code.
 target=`getprop ro.product.device`
 case "$target" in
-    "msm7201a_ffa" | "msm7201a_surf" | "msm7627_ffa" | "msm7627_surf" | "msm7627a" | \
-    "qsd8250_surf" | "qsd8250_ffa" | "msm7630_surf" | "msm7630_1x" | "msm7630_fusion" | "qsd8650a_st1x")
+    "msm7201a_ffa" | "msm7201a_surf" | "msm7627_ffa" | "msm7627_surf" | "msm7627a" | "y210" | \
+    "qsd8250_surf" | "qsd8250_ffa" | "msm7630_surf" | "msm7630_1x" | "qsd8650a_st1x")
         echo "ondemand" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
         echo 90 > /sys/devices/system/cpu/cpu0/cpufreq/ondemand/up_threshold
         chown system /sys/devices/system/cpu/cpu0/cpufreq/ondemand/sampling_rate
         ;;
 esac
 #/* DTS2011100400399 yanzhijun 20111006 end >*/
-# /* < DTS2011111101457 zhangxiangdang 20111112 begin */ 
-#/* Merge DTS2011032603678 and DTS2011012201891 to 7x27A platform. */
-/* < DTS2012022801524 weizhonghui 20120228 begin */
-/system/bin/hwvefs /data/huawei_hwvefs -o allow_other &
-/* DTS2012022801524 weizhonghui 20120228 end > */
+# /* < DTS2011111101457 zhangxiangdang 20111112 begin */
+# Merge DTS2011032603678 and DTS2011012201891 to 7x27A platform.
+# < DTS2012022801524 weizhonghui 20120228 begin >
+if [ -x /system/bin/hwvefs ]; then
+    /system/bin/hwvefs /data/huawei_hwvefs -o allow_other &
+fi
+# < DTS2012022801524 weizhonghui 20120228 end >
 # /* DTS2011111101457 zhangxiangdang 20111112 end > */
 case "$target" in
     "msm7201a_ffa" | "msm7201a_surf")
@@ -50,14 +52,14 @@ case "$target" in
 esac
 
 case "$target" in
-    "msm7630_surf" | "msm7630_1x" | "msm7630_fusion")
+    "msm7630_surf" | "msm7630_1x")
         echo 75000 > /sys/devices/system/cpu/cpu0/cpufreq/ondemand/sampling_rate
         echo 1 > /sys/module/pm2/parameters/idle_sleep_mode
         ;;
 esac
 #/*< DTS2011101306531 xiewen 20111013 begin */
 case "$target" in
-     "msm7201a_ffa" | "msm7201a_surf" | "msm7627_ffa" | "msm7627_surf" | "msm7630_surf" | "msm7630_1x" | "msm7630_fusion" | "msm7627a" )
+     "msm7201a_ffa" | "msm7201a_surf" | "msm7627_ffa" | "msm7627_surf" | "msm7630_surf" | "msm7630_1x" | "msm7627a" | "y210" )
         echo 300000 > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
         ;;
 esac
@@ -126,7 +128,7 @@ case "$target" in
 esac
 
 case "$target" in
-    "msm7627_ffa" | "msm7627_surf" | "msm7627a")
+    "msm7627_ffa" | "msm7627_surf" | "msm7627a" | "y210")
         echo 25000 > /sys/devices/system/cpu/cpu0/cpufreq/ondemand/sampling_rate
         ;;
 esac

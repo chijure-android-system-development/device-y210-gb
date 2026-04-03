@@ -27,7 +27,7 @@ lib/libqueue.so
 lib/libwms.so
 lib/libwmsts.so
 lib/libshareril.so
-# test I am not sure
+# Kept for legacy compatibility with the extractor set.
 lib/libdsutils.so
 lib/libqdp.so
 lib/libhwnv.so
@@ -40,7 +40,7 @@ lib/libdsnet.so
 lib/libdsprofile.so
 lib/libdssock.so
 
-# for extendedextractor test I am not sure
+# Kept for legacy media extractor compatibility.
 lib/libmmparser.so
 lib/libmmosal.so
 lib/libmmparser_divxdrmlib.so
@@ -67,6 +67,7 @@ lib/libgsl.so
 lib/liboemcamera.so
 lib/libmmjpeg.so
 lib/libmmipl.so
+lib/libmmprocess.so
 
 # omx test
 lib/libOmxAacDec.so

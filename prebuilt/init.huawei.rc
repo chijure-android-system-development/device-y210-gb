@@ -26,7 +26,7 @@
 #
 
 import /init.y210.rc
-import /init.memm.rc
+import /init.mem.rc
 
 on boot-pause
     exec system/bin/battery_charging
@@ -55,8 +55,8 @@ on boot
     mkdir /data/misc/wifi/bin 0775 system system
     mkdir /data/misc/dhcp 0770 dhcp dhcp
     chown dhcp dhcp /data/misc/dhcp
-    # Stage legacy Atheros userspace assets after /data and /system are available.
-    copy /system/etc/wifi/wpa_supplicant.conf /data/misc/wifi/wpa_supplicant.conf
+    # Seed the supplicant config only on first boot; do not clobber saved networks.
+    exec /system/bin/sh -c "if [ ! -f /data/misc/wifi/wpa_supplicant.conf ]; then cat /system/etc/wifi/wpa_supplicant.conf > /data/misc/wifi/wpa_supplicant.conf; fi"
     chown wifi wifi /data/misc/wifi/wpa_supplicant.conf
     chmod 0660 /data/misc/wifi/wpa_supplicant.conf
     write /data/.psm.info 1
@@ -96,7 +96,6 @@ on boot
 
     #Set SUID bit for usbhub
     chmod 4755 /system/bin/usbhub
-    chmod 755 /system/bin/usbhub_init
 
     #Set SUID bit for diag_mdlog
     chmod 4755 /system/bin/diag_mdlog
@@ -205,15 +204,6 @@ on property:sys.boot_completed=1
     write /sys/devices/system/cpu/cpu0/cpufreq/ondemand/up_threshold 80
     write /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq 320000
 # /*DTS2012011905037 hujun 20111119 end >*/
-
-# Export GPIO56 for fusion targets to enable/disable hub
-service usbhub_init /system/bin/usbhub_init
-   user root
-   disabled
-   oneshot
-
-on property:ro.product.device=msm7630_fusion
-    start usbhub_init
 
 #/* < DTS2011122402005 wanghao 20111224 begin */
 #/* < DTS2011121504967 wanghao 20111215 begin */
@@ -447,6 +437,11 @@ service qcom-wifi /system/bin/sh /system/etc/init.qcom.wifi.sh
 on property:init.svc.bootanim=stopped
     start qcom-wifi
     start qcom-post-boot
+    # Re-apply the 256 MB Y210 LMK profile after the core init.rc defaults.
+    write /sys/module/lowmemorykiller/parameters/adj 0,2,4,6,7,15
+    write /proc/sys/vm/overcommit_memory 1
+    write /proc/sys/vm/min_free_order_shift 4
+    write /sys/module/lowmemorykiller/parameters/minfree 1536,2048,3072,4096,5120,6144
 
 service atfwd /system/bin/ATFWD-daemon
     user system
