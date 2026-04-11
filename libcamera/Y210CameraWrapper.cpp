@@ -32,7 +32,7 @@ static void ensureY210CameraLibOpened();
 // function, r1 contains garbage and the blob logs a random mode before
 // failing startCamera(). Make the mode selectable at runtime so we can
 // probe which Huawei/Qualcomm value this blob expects.
-static const int kDefaultCameraMode = 4;
+static const int kDefaultCameraMode = 1;
 
 static int getCameraMode()
 {
@@ -55,6 +55,22 @@ static int getCameraMode()
 
 static bool shouldDelegateRelease()
 {
+    char gated[PROPERTY_VALUE_MAX];
+    property_get("debug.camera.delegate_release", gated, "");
+    if (gated[0] != '\0') {
+        return strcmp(gated, "0") != 0;
+    }
+
+    property_get("camera.delegate_release", gated, "");
+    if (gated[0] != '\0') {
+        return strcmp(gated, "0") != 0;
+    }
+
+    property_get("persist.camera.delegate_release", gated, "");
+    if (!strcmp(gated, "1")) {
+        return true;
+    }
+
     char value[PROPERTY_VALUE_MAX];
     property_get("persist.camera.skip_release", value, "1");
     return strcmp(value, "1") != 0;
@@ -67,8 +83,67 @@ static bool shouldDelegateSetParameters()
     return strcmp(value, "0") != 0;
 }
 
+static bool shouldDelegateTakePicture()
+{
+    char value[PROPERTY_VALUE_MAX];
+    property_get("persist.camera.delegate_takepicture", value, "0");
+    return strcmp(value, "0") != 0;
+}
+
+static bool shouldNullIfaceOnRelease()
+{
+    char value[PROPERTY_VALUE_MAX];
+    property_get("debug.camera.null_iface_on_release", value, "");
+    if (value[0] != '\0') {
+        return strcmp(value, "0") != 0;
+    }
+
+    property_get("camera.null_iface_on_release", value, "");
+    if (value[0] != '\0') {
+        return strcmp(value, "0") != 0;
+    }
+
+    property_get("persist.camera.null_iface_on_release", value, "0");
+    return strcmp(value, "0") != 0;
+}
+
+static const char* cameraMsgName(int32_t msgType)
+{
+    switch (msgType) {
+    case CAMERA_MSG_ERROR: return "ERROR";
+    case CAMERA_MSG_SHUTTER: return "SHUTTER";
+    case CAMERA_MSG_FOCUS: return "FOCUS";
+    case CAMERA_MSG_ZOOM: return "ZOOM";
+    case CAMERA_MSG_PREVIEW_FRAME: return "PREVIEW_FRAME";
+    case CAMERA_MSG_VIDEO_FRAME: return "VIDEO_FRAME";
+    case CAMERA_MSG_POSTVIEW_FRAME: return "POSTVIEW_FRAME";
+    case CAMERA_MSG_RAW_IMAGE: return "RAW_IMAGE";
+    case CAMERA_MSG_COMPRESSED_IMAGE: return "COMPRESSED_IMAGE";
+    default: return "UNKNOWN";
+    }
+}
+
+static bool isDelegatableParameterKey(const char* key)
+{
+    if (key == NULL) {
+        return false;
+    }
+
+    return !strcmp(key, CameraParameters::KEY_PREVIEW_SIZE) ||
+            !strcmp(key, CameraParameters::KEY_PICTURE_SIZE) ||
+            !strcmp(key, CameraParameters::KEY_PREVIEW_FORMAT) ||
+            !strcmp(key, CameraParameters::KEY_PICTURE_FORMAT) ||
+            !strcmp(key, CameraParameters::KEY_JPEG_QUALITY) ||
+            !strcmp(key, CameraParameters::KEY_ROTATION);
+}
+
 wp<CameraHardwareInterface> Y210CameraWrapper::sSingleton;
 static sp<CameraHardwareInterface> gPinnedCameraHardware;
+static void* gLastCtorIface = NULL;
+static void* gLastReleasedIface = NULL;
+static void* gLastReleasedWrapper = NULL;
+static bool gLastReleasedPreviewRunning = false;
+static bool gLastReleasedReleased = false;
 
 static void ensureY210CameraLibOpened()
 {
@@ -121,12 +196,20 @@ extern "C" sp<CameraHardwareInterface> HAL_openCameraHardware(int cameraId)
 
 sp<CameraHardwareInterface> Y210CameraWrapper::createInstance(int cameraId)
 {
-    LOGI("createInstance(cameraId=%d) entry", cameraId);
+    LOGI("createInstance(cameraId=%d) entry lastReleasedWrapper=%p lastReleasedIface=%p lastReleasedPreview=%d lastReleasedFlag=%d",
+            cameraId, gLastReleasedWrapper, gLastReleasedIface,
+            gLastReleasedPreviewRunning, gLastReleasedReleased);
     if (sSingleton != NULL) {
         sp<CameraHardwareInterface> hardware = sSingleton.promote();
         if (hardware != NULL) {
             sp<Y210CameraWrapper> wrapper =
                     static_cast<Y210CameraWrapper*>(hardware.get());
+            LOGI("createInstance singleton promote hardware=%p wrapper=%p usable=%d released=%d preview=%d iface=%p",
+                    hardware.get(), wrapper.get(),
+                    wrapper != NULL ? wrapper->isUsable() : 0,
+                    wrapper != NULL ? wrapper->mReleased : 0,
+                    wrapper != NULL ? wrapper->mPreviewRunning : 0,
+                    wrapper != NULL ? wrapper->mLibInterface.get() : NULL);
             if (wrapper != NULL && wrapper->isUsable()) {
                 LOGI("createInstance returning existing singleton %p", hardware.get());
                 return hardware;
@@ -158,7 +241,11 @@ sp<CameraHardwareInterface> Y210CameraWrapper::createInstance(int cameraId)
         gPinnedCameraHardware = hardware;
         LOGW("createInstance pinning wrapper to avoid release-time refcount crash");
     }
-    LOGI("createInstance created wrapper %p", hardware.get());
+    LOGI("createInstance created wrapper=%p iface=%p reusedLastIface=%d lastCtorIface=%p",
+            hardware.get(), hardware->mLibInterface.get(),
+            hardware->mLibInterface.get() != NULL
+                    && hardware->mLibInterface.get() == gLastReleasedIface,
+            gLastCtorIface);
     return hardware;
 }
 
@@ -167,6 +254,10 @@ Y210CameraWrapper::Y210CameraWrapper(int cameraId)
       mReleased(false),
       mPreviewRunning(false),
       mRecordingRunning(false),
+      mNotifyCb(NULL),
+      mDataCb(NULL),
+      mDataCbTimestamp(NULL),
+      mCallbackUser(NULL),
       mHasLastGoodParameters(false)
 {
     LOGI("Y210CameraWrapper ctor cameraId=%d", cameraId);
@@ -175,11 +266,62 @@ Y210CameraWrapper::Y210CameraWrapper(int cameraId)
     mLibInterface = gOpenCameraHardware
             ? gOpenCameraHardware(cameraId, cameraMode)
             : NULL;
-    LOGI("Y210CameraWrapper ctor gOpenCameraHardware returned %p", mLibInterface.get());
+    LOGI("Y210CameraWrapper ctor gOpenCameraHardware returned iface=%p reusedLastCtor=%d reusedLastReleased=%d",
+            mLibInterface.get(),
+            mLibInterface.get() != NULL && mLibInterface.get() == gLastCtorIface,
+            mLibInterface.get() != NULL && mLibInterface.get() == gLastReleasedIface);
+    gLastCtorIface = mLibInterface.get();
 }
 
 Y210CameraWrapper::~Y210CameraWrapper()
 {
+    LOGI("Y210WRAP: dtor wrapper=%p released=%d iface=%p preview=%d recording=%d",
+            this, mReleased, mLibInterface.get(), mPreviewRunning, mRecordingRunning);
+    gLastReleasedWrapper = this;
+    gLastReleasedIface = mLibInterface.get();
+    gLastReleasedPreviewRunning = mPreviewRunning;
+    gLastReleasedReleased = mReleased;
+}
+
+void Y210CameraWrapper::notifyCallbackShim(int32_t msgType, int32_t ext1,
+        int32_t ext2, void* user)
+{
+    Y210CameraWrapper* self = static_cast<Y210CameraWrapper*>(user);
+    if (self == NULL) return;
+    LOGI("Y210WRAP: notify msg=%s(%d) ext1=%d ext2=%d wrapper=%p",
+            cameraMsgName(msgType), msgType, ext1, ext2, self);
+    if (self->mNotifyCb != NULL) {
+        self->mNotifyCb(msgType, ext1, ext2, self->mCallbackUser);
+    }
+}
+
+void Y210CameraWrapper::dataCallbackShim(int32_t msgType,
+        const sp<IMemory>& dataPtr, void* user)
+{
+    Y210CameraWrapper* self = static_cast<Y210CameraWrapper*>(user);
+    if (self == NULL) return;
+    ssize_t size = dataPtr != NULL ? dataPtr->size() : -1;
+    if (msgType != CAMERA_MSG_PREVIEW_FRAME) {
+        LOGI("Y210WRAP: data msg=%s(%d) size=%ld wrapper=%p",
+                cameraMsgName(msgType), msgType, static_cast<long>(size), self);
+    }
+    if (self->mDataCb != NULL) {
+        self->mDataCb(msgType, dataPtr, self->mCallbackUser);
+    }
+}
+
+void Y210CameraWrapper::dataCallbackTimestampShim(nsecs_t timestamp,
+        int32_t msgType, const sp<IMemory>& dataPtr, void* user)
+{
+    Y210CameraWrapper* self = static_cast<Y210CameraWrapper*>(user);
+    if (self == NULL) return;
+    ssize_t size = dataPtr != NULL ? dataPtr->size() : -1;
+    LOGI("Y210WRAP: data-ts msg=%s(%d) ts=%lld size=%ld wrapper=%p",
+            cameraMsgName(msgType), msgType, static_cast<long long>(timestamp),
+            static_cast<long>(size), self);
+    if (self->mDataCbTimestamp != NULL) {
+        self->mDataCbTimestamp(timestamp, msgType, dataPtr, self->mCallbackUser);
+    }
 }
 
 CameraParameters Y210CameraWrapper::seedParameters() const
@@ -189,7 +331,9 @@ CameraParameters Y210CameraWrapper::seedParameters() const
     // framework-owned CameraParameters instance so CameraService never needs
     // to flatten the vendor object's internal String8 storage directly.
     CameraParameters params;
-    params.setPreviewSize(480, 320);
+    // Keep the synthetic framework-owned preview defaults aligned with the
+    // size that actually produces a visible preview on this legacy blob.
+    params.setPreviewSize(640, 480);
     params.setPreviewFrameRate(15);
     params.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
     params.setPictureSize(640, 480);
@@ -205,7 +349,7 @@ CameraParameters Y210CameraWrapper::seedParameters() const
             CameraParameters::ANTIBANDING_AUTO);
     params.set(CameraParameters::KEY_ROTATION, "0");
     params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-            "480x320,432x320,352x288,320x240,240x160,176x144");
+            "640x480,480x320,432x320,352x288,240x160,176x144");
     params.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
             "640x480,512x384,320x240");
     params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES, "15");
@@ -301,6 +445,43 @@ CameraParameters Y210CameraWrapper::sanitizeParameters(
     return safe;
 }
 
+CameraParameters Y210CameraWrapper::buildDelegatedParameters(
+        const CameraParameters& in) const
+{
+    CameraParameters out(seedParameters());
+    static const char* kKeys[] = {
+        CameraParameters::KEY_PREVIEW_SIZE,
+        CameraParameters::KEY_PICTURE_SIZE,
+        CameraParameters::KEY_PREVIEW_FORMAT,
+        CameraParameters::KEY_PICTURE_FORMAT,
+        CameraParameters::KEY_JPEG_QUALITY,
+        CameraParameters::KEY_ROTATION,
+    };
+
+    for (size_t i = 0; i < sizeof(kKeys) / sizeof(kKeys[0]); ++i) {
+        if (!isDelegatableParameterKey(kKeys[i])) {
+            continue;
+        }
+        copyParameterIfPresent(&out, in, kKeys[i]);
+    }
+
+    return out;
+}
+
+const char* Y210CameraWrapper::findFirstPresentParameterKey(
+        const CameraParameters& params,
+        const char* const* keys, size_t keyCount) const
+{
+    for (size_t i = 0; i < keyCount; ++i) {
+        const char* key = keys[i];
+        const char* value = params.get(key);
+        if (value != NULL && value[0] != '\0') {
+            return key;
+        }
+    }
+    return NULL;
+}
+
 void Y210CameraWrapper::logParameterSummary(const char* prefix,
         const CameraParameters& params) const
 {
@@ -344,7 +525,17 @@ void Y210CameraWrapper::setCallbacks(notify_callback notify_cb,
         void *user)
 {
     if (isUsable()) {
-        mLibInterface->setCallbacks(notify_cb, data_cb, data_cb_timestamp, user);
+        mNotifyCb = notify_cb;
+        mDataCb = data_cb;
+        mDataCbTimestamp = data_cb_timestamp;
+        mCallbackUser = user;
+        LOGI("Y210WRAP: setCallbacks wrapper=%p notify=%p data=%p dataTs=%p user=%p",
+                this, notify_cb, data_cb, data_cb_timestamp, user);
+        mLibInterface->setCallbacks(
+                notify_cb ? notifyCallbackShim : NULL,
+                data_cb ? dataCallbackShim : NULL,
+                data_cb_timestamp ? dataCallbackTimestampShim : NULL,
+                this);
     }
 }
 
@@ -376,11 +567,15 @@ status_t Y210CameraWrapper::startPreview()
     const char* pf = params.get(CameraParameters::KEY_PREVIEW_FORMAT);
     LOGI("spdq: wrapper startPreview enter iface=%p preview=%dx%d format=%s",
          mLibInterface.get(), pw, ph, pf ? pf : "(null)");
+    LOGI("Y210WRAP: startPreview enter wrapper=%p iface=%p previewRunning=%d recording=%d",
+            this, mLibInterface.get(), mPreviewRunning, mRecordingRunning);
     LOGI("startPreview entering iface=%p", mLibInterface.get());
     status_t rc = mLibInterface->startPreview();
     if (rc == NO_ERROR) {
         mPreviewRunning = true;
     }
+    LOGI("Y210WRAP: startPreview exit rc=%d previewRunning=%d iface=%p",
+            rc, mPreviewRunning, mLibInterface.get());
     LOGI("spdq: wrapper startPreview exit rc=%d previewRunning=%d", rc, mPreviewRunning);
     LOGI("startPreview delegated rc=%d previewRunning=%d", rc, mPreviewRunning);
     return rc;
@@ -416,17 +611,26 @@ status_t Y210CameraWrapper::setOverlay(const sp<Overlay> &overlay)
 void Y210CameraWrapper::stopPreview()
 {
     if (!isUsable()) {
+        LOGW("Y210WRAP: stopPreview ignored unusable wrapper=%p released=%d iface=%p",
+                this, mReleased, mLibInterface.get());
         return;
     }
+    if (!mPreviewRunning) {
+        LOGI("Y210WRAP: stopPreview skip already-stopped wrapper=%p iface=%p",
+                this, mLibInterface.get());
+        return;
+    }
+    LOGI("Y210WRAP: stopPreview enter wrapper=%p iface=%p previewRunning=%d recording=%d",
+            this, mLibInterface.get(), mPreviewRunning, mRecordingRunning);
     mLibInterface->stopPreview();
     mPreviewRunning = false;
-    LOGI("stopPreview previewRunning=%d", mPreviewRunning);
+    LOGI("Y210WRAP: stopPreview delegated done previewRunning=%d", mPreviewRunning);
+    LOGI("stopPreview exit previewRunning=%d", mPreviewRunning);
 }
 
 bool Y210CameraWrapper::previewEnabled()
 {
     bool enabled = isUsable() && mPreviewRunning;
-    LOGI("previewEnabled returning %d", enabled);
     return enabled;
 }
 
@@ -479,12 +683,37 @@ status_t Y210CameraWrapper::cancelAutoFocus()
 
 status_t Y210CameraWrapper::takePicture()
 {
-    return isUsable() ? mLibInterface->takePicture() : INVALID_OPERATION;
+    if (!isUsable()) {
+        LOGE("Y210WRAP: takePicture ignored unusable wrapper=%p released=%d iface=%p",
+                this, mReleased, mLibInterface.get());
+        return INVALID_OPERATION;
+    }
+    logParameterSummary("takePicture cached", getParameters());
+    LOGI("Y210WRAP: takePicture enter wrapper=%p iface=%p previewRunning=%d recording=%d notify=%p data=%p dataTs=%p user=%p",
+            this, mLibInterface.get(), mPreviewRunning, mRecordingRunning,
+            mNotifyCb, mDataCb, mDataCbTimestamp, mCallbackUser);
+    if (!shouldDelegateTakePicture()) {
+        LOGW("Y210WRAP: takePicture blocked by persist.camera.delegate_takepicture=0");
+        return INVALID_OPERATION;
+    }
+    status_t rc = mLibInterface->takePicture();
+    LOGI("Y210WRAP: takePicture exit rc=%d previewRunningBefore=%d",
+            rc, mPreviewRunning);
+    return rc;
 }
 
 status_t Y210CameraWrapper::cancelPicture()
 {
-    return isUsable() ? mLibInterface->cancelPicture() : INVALID_OPERATION;
+    if (!isUsable()) {
+        LOGW("Y210WRAP: cancelPicture ignored unusable wrapper=%p released=%d iface=%p",
+                this, mReleased, mLibInterface.get());
+        return INVALID_OPERATION;
+    }
+    LOGI("Y210WRAP: cancelPicture enter wrapper=%p iface=%p preview=%d recording=%d",
+            this, mLibInterface.get(), mPreviewRunning, mRecordingRunning);
+    status_t rc = mLibInterface->cancelPicture();
+    LOGI("Y210WRAP: cancelPicture exit rc=%d", rc);
+    return rc;
 }
 
 status_t Y210CameraWrapper::dump(int fd, const Vector<String16> &args) const
@@ -497,6 +726,17 @@ status_t Y210CameraWrapper::setParameters(const CameraParameters& params)
     if (!isUsable()) {
         return INVALID_OPERATION;
     }
+    static const char* kBlockedKeys[] = {
+        CameraParameters::KEY_SCENE_MODE,
+        CameraParameters::KEY_ANTIBANDING,
+        CameraParameters::KEY_FLASH_MODE,
+        CameraParameters::KEY_EXPOSURE_COMPENSATION,
+        CameraParameters::KEY_WHITE_BALANCE,
+        CameraParameters::KEY_PREVIEW_FPS_RANGE,
+        "recording-hint",
+        "focus-areas",
+        "metering-areas",
+    };
     CameraParameters patched(params);
     if (patched.get(CameraParameters::KEY_PREVIEW_SIZE) == NULL) {
         patched.setPreviewSize(480, 320);
@@ -510,8 +750,12 @@ status_t Y210CameraWrapper::setParameters(const CameraParameters& params)
     if (patched.get(CameraParameters::KEY_PICTURE_FORMAT) == NULL) {
         patched.setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
     }
-    logParameterSummary("setParameters request", patched);
-    mLastGoodParameters = sanitizeParameters(&patched);
+    LOGI("Y210WRAP: setParameters enter wrapper=%p iface=%p preview=%d recording=%d",
+            this, mLibInterface.get(), mPreviewRunning, mRecordingRunning);
+    logParameterSummary("setParameters incoming", patched);
+    LOGI("Y210WRAP: setParameters incoming-flat=%s", patched.flatten().string());
+    CameraParameters safe = sanitizeParameters(&patched);
+    mLastGoodParameters = safe;
     mHasLastGoodParameters = true;
 
     if (!shouldDelegateSetParameters()) {
@@ -519,9 +763,21 @@ status_t Y210CameraWrapper::setParameters(const CameraParameters& params)
         return NO_ERROR;
     }
 
-    status_t rc = mLibInterface->setParameters(patched);
-    LOGI("setParameters delegated rc=%d", rc);
-    return rc;
+    CameraParameters delegated = buildDelegatedParameters(safe);
+    logParameterSummary("setParameters delegate-pre", delegated);
+    LOGI("Y210WRAP: setParameters delegate-flat=%s", delegated.flatten().string());
+    status_t rc = mLibInterface->setParameters(delegated);
+    LOGI("Y210WRAP: setParameters delegate-post rc=%d previewRunning=%d recordingRunning=%d",
+            rc, mPreviewRunning, mRecordingRunning);
+    if (rc != NO_ERROR) {
+        const char* suspect = findFirstPresentParameterKey(
+                patched, kBlockedKeys, sizeof(kBlockedKeys) / sizeof(kBlockedKeys[0]));
+        LOGW("Y210WRAP: setParameters fallback-to-cache rc=%d suspect=%s",
+                rc, suspect ? suspect : "<allowlist-or-vendor-key>");
+        LOGW("Y210WRAP: setParameters blob rejected request, preserving cached parameters");
+        return NO_ERROR;
+    }
+    return NO_ERROR;
 }
 
 CameraParameters Y210CameraWrapper::getParameters() const
@@ -565,17 +821,49 @@ status_t Y210CameraWrapper::sendCommand(int32_t command, int32_t arg1, int32_t a
 
 void Y210CameraWrapper::release()
 {
+    const bool delegateRelease = shouldDelegateRelease();
+    const bool nullIfaceOnRelease = shouldNullIfaceOnRelease();
     if (!isUsable()) {
-        LOGW("release ignored: wrapper already unusable");
+        LOGW("Y210WRAP: release skip double-release wrapper=%p released=%d iface=%p",
+                this, mReleased, mLibInterface.get());
         return;
     }
-    LOGI("release entering for wrapper %p iface %p", this, mLibInterface.get());
-    if (!shouldDelegateRelease()) {
+    LOGI("Y210WRAP: release enter wrapper=%p iface=%p preview=%d recording=%d released=%d",
+            this, mLibInterface.get(), mPreviewRunning, mRecordingRunning, mReleased);
+    LOGI("Y210WRAP: release mode delegate=%d null_iface=%d pinned=%p singleton=%p",
+            delegateRelease, nullIfaceOnRelease, gPinnedCameraHardware.get(),
+            sSingleton.promote().get());
+    if (mPreviewRunning) {
+        stopPreview();
+    }
+    if (mLibInterface != NULL) {
+        LOGI("Y210WRAP: release clear-callbacks enter iface=%p notify=%p data=%p dataTs=%p user=%p",
+                mLibInterface.get(), mNotifyCb, mDataCb, mDataCbTimestamp, mCallbackUser);
+        mLibInterface->setCallbacks(NULL, NULL, NULL, NULL);
+        LOGI("Y210WRAP: release clear-callbacks exit iface=%p", mLibInterface.get());
+    }
+    mNotifyCb = NULL;
+    mDataCb = NULL;
+    mDataCbTimestamp = NULL;
+    mCallbackUser = NULL;
+    if (!delegateRelease) {
+        if (nullIfaceOnRelease && mLibInterface != NULL) {
+            LOGW("Y210WRAP: release forcing local iface detach iface=%p pinned=%p",
+                    mLibInterface.get(), gPinnedCameraHardware.get());
+            mLibInterface.clear();
+            LOGI("Y210WRAP: release local iface detached iface=%p", mLibInterface.get());
+        }
         sSingleton.clear();
         mPreviewRunning = false;
         mRecordingRunning = false;
         mReleased = true;
-        LOGW("release skipped delegated blob release to avoid mediaserver crash");
+        gLastReleasedWrapper = this;
+        gLastReleasedIface = mLibInterface.get();
+        gLastReleasedPreviewRunning = mPreviewRunning;
+        gLastReleasedReleased = mReleased;
+        LOGW("Y210WRAP: release skipped delegated blob release to avoid mediaserver crash");
+        LOGI("Y210WRAP: release exit skipped iface=%p released=%d wrapper=%p pinned=%p",
+                mLibInterface.get(), mReleased, this, gPinnedCameraHardware.get());
         return;
     }
 
@@ -583,12 +871,23 @@ void Y210CameraWrapper::release()
     mPreviewRunning = false;
     mRecordingRunning = false;
     mReleased = true;
+    LOGI("Y210WRAP: release delegated enter iface=%p", libInterface);
+    if (nullIfaceOnRelease) {
+        LOGI("Y210WRAP: release delegated path ignoring null_iface request");
+    }
     if (libInterface != NULL) {
+        LOGI("Y210WRAP: release delegated call iface=%p", libInterface);
         libInterface->release();
+        LOGI("Y210WRAP: release delegated return iface=%p", libInterface);
     }
     mLibInterface.clear();
     gPinnedCameraHardware.clear();
-    LOGI("release completed");
+    gLastReleasedWrapper = this;
+    gLastReleasedIface = mLibInterface.get();
+    gLastReleasedPreviewRunning = mPreviewRunning;
+    gLastReleasedReleased = mReleased;
+    LOGI("Y210WRAP: release exit delegated iface=%p pinned=%p released=%d",
+            mLibInterface.get(), gPinnedCameraHardware.get(), mReleased);
 }
 
 }; // namespace android

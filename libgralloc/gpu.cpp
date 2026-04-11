@@ -312,10 +312,6 @@ int gpu_context_t::alloc_impl(int w, int h, int format, int usage,
     if ((ssize_t)size <= 0)
         return -EINVAL;
 
-    LOGI("fmtq: alloc format=%d w=%d h=%d usage=0x%08x size=%u stride=%u alignedw=%u",
-         format, w, h, usage, (unsigned int)size, (unsigned int)alignedw,
-         (unsigned int)alignedw);
-
     int err;
     if (usage & GRALLOC_USAGE_HW_FB) {
         err = gralloc_alloc_framebuffer(size, usage, pHandle);

@@ -18,7 +18,8 @@ PRODUCT_PACKAGES += \
 
 # Graphics
 PRODUCT_PACKAGES += \
-    gralloc.y210
+    gralloc.y210 \
+    copybit.y210
 
 # Audio
 PRODUCT_PACKAGES += \
@@ -30,8 +31,7 @@ PRODUCT_PACKAGES += \
 # Other
 PRODUCT_PACKAGES += \
     lights.y210 \
-    gps.y210 \
-    Y210ProjectMenu
+    gps.y210
 
 ifeq ($(TARGET_PREBUILT_KERNEL),)
 	LOCAL_KERNEL := device/huawei/y210/kernel
@@ -49,10 +49,7 @@ PRODUCT_COPY_FILES += \
     # frameworks/base/data/etc/android.hardware.telephony.gsm.xml:system/etc/permissions/android.hardware.telephony.gsm.xml \
     frameworks/base/data/etc/android.hardware.location.gps.xml:system/etc/permissions/android.hardware.location.gps.xml \
     frameworks/base/data/etc/android.hardware.wifi.xml:system/etc/permissions/android.hardware.wifi.xml \
-    frameworks/base/data/etc/android.hardware.sensor.proximity.xml:system/etc/permissions/android.hardware.sensor.proximity.xml \
-    frameworks/base/data/etc/android.hardware.sensor.light.xml:system/etc/permissions/android.hardware.sensor.light.xml \
-    frameworks/base/data/etc/android.hardware.touchscreen.multitouch.distinct.xml:system/etc/permissions/android.hardware.touchscreen.multitouch.distinct.xml \
-    frameworks/base/data/etc/android.hardware.sensor.gyroscope.xml:system/etc/permissions/android.hardware.sensor.gyroscope.xml
+    frameworks/base/data/etc/android.hardware.touchscreen.multitouch.distinct.xml:system/etc/permissions/android.hardware.touchscreen.multitouch.distinct.xml
 
 PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/init.huawei.rc:root/init.huawei.rc \
@@ -70,6 +67,8 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
     device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
     device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog \
+    device/huawei/y210/prebuilt/system/app/ProjectMenuAct.apk:system/app/ProjectMenuAct.apk \
+    device/huawei/y210/prebuilt/system/app/ProjectMenuAct.odex:system/app/ProjectMenuAct.odex \
     device/huawei/y210/prebuilt/system/lib/libprojectmenu.so:system/lib/libprojectmenu.so
 
 # Wi-Fi firmware and module (Qualcomm/Atheros)

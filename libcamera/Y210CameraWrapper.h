@@ -49,10 +49,20 @@ public:
     static sp<CameraHardwareInterface> createInstance(int cameraId);
 
 private:
+    static void notifyCallbackShim(int32_t msgType, int32_t ext1,
+            int32_t ext2, void* user);
+    static void dataCallbackShim(int32_t msgType, const sp<IMemory>& dataPtr,
+            void* user);
+    static void dataCallbackTimestampShim(nsecs_t timestamp, int32_t msgType,
+            const sp<IMemory>& dataPtr, void* user);
     explicit Y210CameraWrapper(int cameraId);
     virtual ~Y210CameraWrapper();
     CameraParameters seedParameters() const;
     CameraParameters sanitizeParameters(const CameraParameters* raw) const;
+    CameraParameters buildDelegatedParameters(
+            const CameraParameters& in) const;
+    const char* findFirstPresentParameterKey(const CameraParameters& params,
+            const char* const* keys, size_t keyCount) const;
     bool copyParameterIfPresent(CameraParameters* dst,
             const CameraParameters& src, const char* key) const;
     void logParameterSummary(const char* prefix,
@@ -64,6 +74,10 @@ private:
     bool mReleased;
     bool mPreviewRunning;
     bool mRecordingRunning;
+    notify_callback mNotifyCb;
+    data_callback mDataCb;
+    data_callback_timestamp mDataCbTimestamp;
+    void* mCallbackUser;
     mutable CameraParameters mLastGoodParameters;
     mutable bool mHasLastGoodParameters;
 

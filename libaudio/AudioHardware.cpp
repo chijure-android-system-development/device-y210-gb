@@ -21,6 +21,8 @@
 #include <utils/Log.h>
 #include <utils/String8.h>
 
+#include <cutils/properties.h>
+
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -46,6 +48,45 @@
 namespace android {
 
 // ----------------------------------------------------------------------------
+
+static int clampPostProcMask(int mask)
+{
+    const int allowed = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE | MBADRC_ENABLE);
+    return mask & allowed;
+}
+
+static int getHeadsetPostProcMask()
+{
+    // Y210: allow tuning headset post-processing to match stock loudness.
+    // Property: persist.sys.headset-postproc
+    // - "full": ADRC+EQ+IIR+MBADRC
+    // - "lite": EQ+IIR
+    // - "off" : 0
+    // - "0xNN": hex mask (unknown bits dropped)
+    //
+    // Default: lite.
+    char value[PROPERTY_VALUE_MAX];
+    property_get("persist.sys.headset-postproc", value, "lite");
+
+    if (!strcmp(value, "off") || !strcmp(value, "0")) {
+        return 0;
+    }
+    if (!strcmp(value, "lite")) {
+        return (EQ_ENABLE | RX_IIR_ENABLE);
+    }
+    if (!strcmp(value, "full") || !strcmp(value, "1")) {
+        return (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE | MBADRC_ENABLE);
+    }
+
+    char *end = NULL;
+    long mask = strtol(value, &end, 0);
+    if (end != NULL && end != value && *end == '\0') {
+        return clampPostProcMask(static_cast<int>(mask));
+    }
+
+    LOGW("Invalid persist.sys.headset-postproc='%s', using lite", value);
+    return (EQ_ENABLE | RX_IIR_ENABLE);
+}
 
 AudioHardware::AudioHardware() {
     //Internal structures initialization
@@ -1595,7 +1636,7 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
             } else {
                 LOGI("Routing audio to Wired Headset");
                 new_snd_device = SND_DEVICE_HEADSET;
-                new_post_proc_feature_mask = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE | MBADRC_ENABLE);
+                new_post_proc_feature_mask = getHeadsetPostProcMask();
             }
         } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
             if (mFmRadioEnabled) {
@@ -1606,7 +1647,7 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
             } else {
                 LOGI("Routing audio to Wired Headset");
                 new_snd_device = SND_DEVICE_HEADSET;
-                new_post_proc_feature_mask = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE | MBADRC_ENABLE);
+                new_post_proc_feature_mask = getHeadsetPostProcMask();
             }
         } else if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
             if (mFmRadioEnabled) {

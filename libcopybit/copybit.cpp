@@ -187,9 +187,6 @@ copybit_image_t const* convertYV12toYCrCb420SP(copybit_image_t const* rhs)
     converted = *rhs;
     converted.format = HAL_PIXEL_FORMAT_YCrCb_420_SP;
 
-    LOGI("cbq: yv12-convert w=%u h=%u stride=%u c_stride=%u offset=%d fd=%d",
-         rhs->w, rhs->h, stride, c_stride, hnd->offset, hnd->fd);
-
     return &converted;
 }
 
@@ -225,8 +222,6 @@ static void set_image(struct mdp_img *img, const struct copybit_image_t *rhs)
     #else
         img->memory_id  = hnd->fd;
     #endif
-    LOGI("cbq: copybit hal=%d w=%u h=%u offset=%u mdp=%d memory_id=%d",
-         rhs->format, rhs->w, rhs->h, hnd->offset, mdp_format, img->memory_id);
 }
 /** setup rectangles */
 static void set_rects(struct copybit_context_t *dev,

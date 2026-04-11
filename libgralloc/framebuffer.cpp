@@ -145,8 +145,6 @@ static void *disp_loop(void *ptr)
         // dequeue next buff to display and lock it
         nxtBuf = m->disp.getHeadValue();
         m->disp.pop();
-        LOGI("fbq: dequeue idx=%d buf=%p cur_buf=%d currentIdx=%d queue_size=%d",
-             nxtBuf.idx, nxtBuf.buf, cur_buf, m->currentIdx, (int)m->disp.size());
         pthread_mutex_unlock(&(m->qlock));
 
         // post buf out to display synchronously
@@ -155,9 +153,6 @@ static void *disp_loop(void *ptr)
         const size_t offset = hnd->base - m->framebuffer->base;
         m->info.activate = FB_ACTIVATE_VBL;
         m->info.yoffset = offset / m->finfo.line_length;
-        LOGI("fbq: ioctl-pre idx=%d buf=%p cur_buf=%d currentIdx=%d yoffset=%d",
-             nxtBuf.idx, nxtBuf.buf, cur_buf, m->currentIdx, m->info.yoffset);
-
 #if defined(HDMI_DUAL_DISPLAY)
         pthread_mutex_lock(&m->overlayLock);
         m->orientation = neworientation;
@@ -168,22 +163,13 @@ static void *disp_loop(void *ptr)
         if (ioctl(m->framebuffer->fd, FBIOPUT_VSCREENINFO, &m->info) == -1) {
             LOGE("ERROR FBIOPUT_VSCREENINFO failed; frame not displayed");
         }
-        LOGI("fbq: ioctl-post idx=%d buf=%p cur_buf=%d currentIdx=%d",
-             nxtBuf.idx, nxtBuf.buf, cur_buf, m->currentIdx);
-
         if (cur_buf != -1) {
             pthread_mutex_lock(&(m->avail[cur_buf].lock));
             m->avail[cur_buf].is_avail = true;
             pthread_cond_signal(&(m->avail[cur_buf].cond));
             pthread_mutex_unlock(&(m->avail[cur_buf].lock));
-            LOGI("fbq: avail-true idx=%d buf=%p cur_buf=%d currentIdx=%d",
-                 cur_buf, nxtBuf.buf, cur_buf, m->currentIdx);
         }
-        LOGI("fbq: curbuf-before-update old=%d new=%d currentIdx=%d buf=%p",
-             cur_buf, nxtBuf.idx, m->currentIdx, nxtBuf.buf);
         cur_buf = nxtBuf.idx;
-        LOGI("fbq: curbuf-after-update cur_buf=%d currentIdx=%d buf=%p",
-             cur_buf, m->currentIdx, nxtBuf.buf);
     }
     return NULL;
 }
@@ -392,10 +378,6 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
     private_module_t* m = reinterpret_cast<private_module_t*>(
             dev->common.module);
     nxtIdx = (m->currentIdx + 1) % NUM_BUFFERS;
-    LOGI("fbq: post-enter buf=%p currentBuf=%p currentIdx=%d swapInterval=%d nxtIdx=%d flags=0x%08x",
-         buffer, m->currentBuffer, m->currentIdx, m->swapInterval, nxtIdx,
-         hnd->flags);
-
     if (hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER) {
 
         reuse = false;
@@ -422,16 +404,11 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
             pthread_mutex_lock(&(m->avail[nxtIdx].lock));
             m->avail[nxtIdx].is_avail = false;
             pthread_mutex_unlock(&(m->avail[nxtIdx].lock));
-            LOGI("fbq: avail-false idx=%d buf=%p currentIdx=%d curBuf=%p",
-                 nxtIdx, buffer, m->currentIdx, m->currentBuffer);
-
             qb.idx = nxtIdx;
             qb.buf = buffer;
             pthread_mutex_lock(&(m->qlock));
             m->disp.push(qb);
             pthread_cond_signal(&(m->qpost));
-            LOGI("fbq: enqueue idx=%d buf=%p currentIdx=%d queue_size=%d",
-                 qb.idx, qb.buf, m->currentIdx, (int)m->disp.size());
             pthread_mutex_unlock(&(m->qlock));
 
             // LCDC: after new buffer grabbed by MDP can unlock previous
@@ -440,24 +417,17 @@ static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
                 if (m->swapInterval != 0) {
                     pthread_mutex_lock(&(m->avail[m->currentIdx].lock));
                     if (! m->avail[m->currentIdx].is_avail) {
-                        LOGI("fbq: wait-avail idx=%d buf=%p currentIdx=%d currentBuf=%p",
-                             m->currentIdx, buffer, m->currentIdx, m->currentBuffer);
                         pthread_cond_wait(&(m->avail[m->currentIdx].cond),
                                          &(m->avail[m->currentIdx].lock));
                         m->avail[m->currentIdx].is_avail = true;
                     }
                     pthread_mutex_unlock(&(m->avail[m->currentIdx].lock));
                 }
-                LOGI("fbq: unlock-current idx=%d currentBuf=%p newBuf=%p",
-                     m->currentIdx, m->currentBuffer, buffer);
                 m->base.unlock(&m->base, m->currentBuffer);
             }
             m->currentBuffer = buffer;
             m->currentIdx = nxtIdx;
         } else {
-            if (m->currentBuffer)
-                LOGI("fbq: unlock-current idx=%d currentBuf=%p newBuf=%p reuse=1",
-                     m->currentIdx, m->currentBuffer, buffer);
             if (m->currentBuffer)
                 m->base.unlock(&m->base, m->currentBuffer);
             m->base.lock(&m->base, buffer,
@@ -585,7 +555,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
 	module->fbFormat = HAL_PIXEL_FORMAT_RGB_565;
     }
     /*
-     * Request NUM_BUFFERS screens (at lest 2 for page flipping)
+     * Request NUM_BUFFERS screens (at least 2 for page flipping).
      */
     info.yres_virtual = info.yres * NUM_BUFFERS;
 
@@ -677,16 +647,8 @@ int mapFrameBufferLocked(struct private_module_t* module)
     module->fps = fps;
 
 #ifdef NO_SURFACEFLINGER_SWAPINTERVAL
-    char pval[PROPERTY_VALUE_MAX];
-    property_get("debug.gr.swapinterval", pval, "1");
-    module->swapInterval = atoi(pval);
-    if (module->swapInterval < private_module_t::PRIV_MIN_SWAP_INTERVAL ||
-        module->swapInterval > private_module_t::PRIV_MAX_SWAP_INTERVAL) {
-        module->swapInterval = 1;
-        LOGW("Out of range (%d to %d) value for debug.gr.swapinterval, using 1",
-             private_module_t::PRIV_MIN_SWAP_INTERVAL,
-             private_module_t::PRIV_MAX_SWAP_INTERVAL);
-    }
+    // Keep page-flip pacing conservative and predictable on this panel.
+    module->swapInterval = 1;
 
 #else
     /* when surfaceflinger supports swapInterval then can just do this */
@@ -815,11 +777,9 @@ int fb_device_open(hw_module_t const* module, const char* name,
             const_cast<int&>(dev->device.minSwapInterval) = private_module_t::PRIV_MIN_SWAP_INTERVAL;
             const_cast<int&>(dev->device.maxSwapInterval) = private_module_t::PRIV_MAX_SWAP_INTERVAL;
 
-            if (m->finfo.reserved[0] == 0x5444 &&
-                    m->finfo.reserved[1] == 0x5055) {
-                dev->device.setUpdateRect = fb_setUpdateRect;
-                LOGD("UPDATE_ON_DEMAND supported");
-            }
+            // Disable update-on-demand on this panel: the partial-update path
+            // is known to leave stale pixels around the status bar on Y210.
+            dev->device.setUpdateRect = 0;
 
             *device = &dev->device.common;
         }

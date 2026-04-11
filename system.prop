@@ -134,7 +134,7 @@ ro.fm.mulinst.recording.support=false
 ro.config.KeyPassToUser=true
 #System property for msm 
 #
-ro.hw_plat=7x25A
+ro.hw_plat=7x25a
 #/* < DTS2011093001538 yangyuan 20110930 begin */
 #/*<DTS2011121604452 yangyuan 20111217 begin */
 ro.config.fm_type=libqcomfm_if

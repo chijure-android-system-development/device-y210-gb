@@ -55,6 +55,13 @@ HTTP := chrome
 BOARD_HAVE_BLUETOOTH := true
 BOARD_HAVE_BLUETOOTH_BCM := true
 
+# FM Radio (Y210 has an FM-capable Qualcomm stack on some variants; keep
+# build-time support enabled so the FM app can be built/installed for testing.)
+BOARD_HAVE_FM_RADIO := true
+BOARD_GLOBAL_CFLAGS += -DHAVE_FM_RADIO
+# Qualcomm "tavarua" style V4L2 radio device.
+BOARD_FM_DEVICE := qcom
+
 # RIL
 # BOARD_PROVIDES_LIBRIL := true
 

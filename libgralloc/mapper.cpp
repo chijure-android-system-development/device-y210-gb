@@ -87,25 +87,17 @@ static int sync_pmem_buffer(private_handle_t* hnd)
     pmem_addr.vaddr = hnd->base;
     pmem_addr.offset = hnd->offset;
     pmem_addr.length = hnd->size;
-    LOGI("flush try ioctl=PMEM_CLEAN_CACHES type=%s fd=%d offset=%d size=%d "
-         "flags=0x%08x fb=%d pmem=%d pmem_adsp=%d ashmem=%d",
-         memType, hnd->fd, hnd->offset, hnd->size, hnd->flags,
-         !!(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER),
-         !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM),
-         !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP),
-         !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM));
     int err = ioctl(hnd->fd, PMEM_CLEAN_CACHES, &pmem_addr);
     if (err < 0 && (errno == ENOTTY || errno == EINVAL)) {
         struct pmem_region region;
         region.offset = hnd->offset;
         region.len = hnd->size;
-        LOGW("flush fallback ioctl=PMEM_CACHE_FLUSH type=%s fd=%d offset=%d "
-             "size=%d errno=%d", memType, hnd->fd, hnd->offset, hnd->size,
-             errno);
         err = ioctl(hnd->fd, PMEM_CACHE_FLUSH, &region);
     }
-    LOGI("flush result type=%s fd=%d offset=%d size=%d err=%d flags=0x%08x",
-         memType, hnd->fd, hnd->offset, hnd->size, err, hnd->flags);
+    if (err < 0) {
+        LOGE("flush failed type=%s fd=%d offset=%d size=%d err=%d",
+             memType, hnd->fd, hnd->offset, hnd->size, err);
+    }
     return err;
 }
 
@@ -307,13 +299,6 @@ int gralloc_lock(gralloc_module_t const* module,
             !(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER) &&
             ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) ||
              (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP))) {
-        LOGI("flush mark fd=%d offset=%d size=%d flags=0x%08x usage=0x%08x "
-             "fb=%d pmem=%d pmem_adsp=%d ashmem=%d",
-             hnd->fd, hnd->offset, hnd->size, hnd->flags, usage,
-             !!(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER),
-             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM),
-             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP),
-             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM));
         hnd->flags |= private_handle_t::PRIV_FLAGS_NEEDS_FLUSH;
     }
 
@@ -348,19 +333,10 @@ int gralloc_unlock(gralloc_module_t const* module,
 
     if (hnd->flags & private_handle_t::PRIV_FLAGS_NEEDS_FLUSH) {
         int err;
-        LOGI("flush unlock begin fd=%d offset=%d size=%d flags=0x%08x "
-             "fb=%d pmem=%d pmem_adsp=%d ashmem=%d",
-             hnd->fd, hnd->offset, hnd->size, hnd->flags,
-             !!(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER),
-             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM),
-             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP),
-             !!(hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM));
         if ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) ||
                 (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP)) {
             err = sync_pmem_buffer(hnd);
         } else {
-            LOGW("flush unlock skip non-pmem fd=%d offset=%d size=%d flags=0x%08x",
-                 hnd->fd, hnd->offset, hnd->size, hnd->flags);
             err = 0;
         }
 
@@ -429,8 +405,6 @@ int gralloc_perform(struct gralloc_module_t const* module,
             hnd->lockState = private_handle_t::LOCK_STATE_MAPPED;
             hnd->gpuaddr = 0;
             *handle = (native_handle_t *)hnd;
-            LOGI("fmtq: create-handle fd=%d size=%u offset=%u in_flags=0x%08x out_flags=0x%08x",
-                 fd, (unsigned int)size, (unsigned int)offset, inferred_flags, hnd->flags);
             res = 0;
             break;
         }
@@ -446,13 +420,8 @@ int gralloc_perform(struct gralloc_module_t const* module,
             *size = calculateBufferSize(width, height, format);
             res = decideBufferHandlingMechanism(format, compositionUsed, hasBlitEngine,
                                                 needConversion, useBufferDirectly);
-            LOGI("fmtq: decide format=%d comp=%s conv=%d direct=%d blit=%d size=%u res=%d",
-                 format, compositionUsed ? compositionUsed : "(null)",
-                 needConversion ? *needConversion : -1,
-                 useBufferDirectly ? *useBufferDirectly : -1,
-                 hasBlitEngine, (unsigned int)*size, res);
-	    break;
-	}
+		    break;
+		}
 	default:
 	    break;
     }
