@@ -316,3 +316,16 @@ index bf72c381d95..e88aa28d734 100644
  
          if (mRequestedApnType.equals(Phone.APN_TYPE_DEFAULT)) {
              if (canSetPreferApn && preferredApn != null) {
+diff --git a/core/java/com/android/internal/os/ZygoteInit.java b/core/java/com/android/internal/os/ZygoteInit.java
+index ad5319e0ba2..270b990afbc 100644
+--- a/core/java/com/android/internal/os/ZygoteInit.java
++++ b/core/java/com/android/internal/os/ZygoteInit.java
+@@ -536,7 +536,7 @@ public class ZygoteInit {
+         String args[] = {
+             "--setuid=1000",
+             "--setgid=1000",
+-            "--setgroups=1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1018,1300,3001,3002,3003",
++            "--setgroups=1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1018,1300,3001,3002,3003,3006",
+             "--capabilities=130104352,130104352",
+             "--runtime-init",
+             "--nice-name=system_server",

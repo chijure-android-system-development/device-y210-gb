@@ -49,3 +49,50 @@ Recommended next checks
 - headset / speaker switching
 - Bluetooth audio
 - long recording / long playback stability
+
+In-call microphone (uplink) note
+--------------------------------
+
+The QCOM `msm_snd` RPC path uses an explicit `mic_mute` flag (`SND_SET_DEVICE`),
+and this HAL defaults `mMicMute=true` until the framework toggles it.
+
+For Y210, the Phone app must route mute/unmute through `AudioManager`
+(instead of `Phone.setMute()`), otherwise call audio can work *downlink-only*
+while the uplink stays muted.
+
+- Overlay: `device/huawei/y210/overlay/packages/apps/Phone/res/values/config.xml`
+- Key: `<bool name="send_mic_mute_to_AudioManager">true</bool>`
+
+Headset volume tuning (post-proc)
+--------------------------------
+
+If headset volume is noticeably lower than stock (same file, same headset),
+the Y210 HAL supports a runtime knob to reduce post-processing on headset routes.
+
+- Property: `persist.sys.headset-postproc`
+- Values:
+  - `lite` (default): `EQ + RX_IIR`
+  - `full`: `ADRC + EQ + RX_IIR + MBADRC`
+  - `off`: disable post-proc on headset
+  - `0xNN`: hex mask (only known bits are kept)
+
+Apply:
+
+```bash
+adb shell setprop persist.sys.headset-postproc lite
+adb shell stop media; adb shell start media
+```
+
+Status: initial on-device test did not change perceived loudness vs stock yet.
+
+FM Radio bring-up note
+----------------------
+
+The `FM` app depends on the framework `android.hardware.fmradio.*` stack (JNI in
+`libandroid_runtime`) plus access to the radio device nodes (`/dev/radio0`,
+`/dev/msm_fm`).
+
+Common failure modes:
+
+- `UnsatisfiedLinkError: acquireFdNative`: FM JNI layer missing.
+- `open(/dev/radio0) failed: Permission denied`: fix device node permissions.
