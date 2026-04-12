@@ -160,9 +160,14 @@ on boot
     # Ensure Huawei RPC service is up early
     start oem_rpc_svc
 
+on post-fs-data
+    # QMI daemons (qmuxd/qmiproxy) expect this directory for their local sockets.
+    mkdir /data/radio 0770 radio radio
+
 on property:sys.boot_completed=1
     # Fix oncrpc node ownership/permissions after system is fully up
-    exec /system/bin/sh -c "chown root qcom_oncrpc /dev/oncrpc/*; chmod 0660 /dev/oncrpc/*"
+    # toolbox `chown` expects user.group (or numeric ids). Use AID_QCOM_ONCRPC=3006.
+    exec /system/bin/sh -c "chown 0.3006 /dev/oncrpc/*; chmod 0660 /dev/oncrpc/*"
     # Restart RPC service after fixing perms
     # stop ril-daemon
     start oem_rpc_svc
@@ -304,14 +309,21 @@ service port-bridge /system/bin/port-bridge /dev/smd0 /dev/ttyGS0
     disabled
 
 on property:ro.baseband="msm"
-    start port-bridge
+    # port-bridge uses /dev/smd0; keep it disabled for CM7 bring-up to avoid
+    # interfering with the RIL modem channel.
+    # start port-bridge
     # Huawei RPC service needed by RIL stack on this device
     start oem_rpc_svc
+    # QMI stack helpers needed by Qualcomm RIL (UIM/CAT/data).
+    start qmuxd
+    start qmiproxy
     # Enable BT-DUN only for all msms
     setprop ro.qualcomm.bluetooth.dun true
-    # Start RIL on MSM baseband (disabled for now).
-    # start ril-daemon
-    # start qmuxd
+    # Ensure modem channel permissions before starting RIL.
+    chown radio radio /dev/smd0
+    chmod 0660 /dev/smd0
+    # Start RIL on MSM baseband.
+    start ril-daemon
     start netmgrd
     # start qmiproxy
 
@@ -322,15 +334,17 @@ on property:ro.baseband="unknown"
 service pcm-bridge /system/bin/pcm-bridge /dev/smd7 /dev/ttyGS1
 #/*DTS2011111602662 wangdong 20111117 end >*/
 
-# service qmiproxy /system/bin/qmiproxy
-#     user radio
-#     group radio
-#     disabled
+service qmiproxy /system/bin/qmiproxy
+    class main
+    user radio
+    group radio qcom_oncrpc diag inet
+    disabled
 
-# service qmuxd /system/bin/qmuxd
-#     user radio
-#     group radio
-#     disabled
+service qmuxd /system/bin/qmuxd
+    class main
+    user radio
+    group radio qcom_oncrpc diag inet
+    disabled
 
 service netmgrd /system/bin/netmgrd
     disabled

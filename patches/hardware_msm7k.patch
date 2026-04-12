@@ -1,0 +1,62 @@
+diff --git a/libcamera/QualcommCameraHardware.cpp b/libcamera/QualcommCameraHardware.cpp
+index 9dbc95c..67d2b88 100644
+--- a/libcamera/QualcommCameraHardware.cpp
++++ b/libcamera/QualcommCameraHardware.cpp
+@@ -700,6 +700,8 @@ namespace android {
+         recording_callback rcb, void *ruser)
+     {
+         LOGV("startPreview E");
++        LOGI("spdq: qcamera startPreviewInternal enter state=%s previewHeap=%p previewCb=%p recordingCb=%p",
++             getCameraStateStr(mCameraState), mPreviewHeap.get(), pcb, rcb);
+ 
+         if (mCameraState == QCS_PREVIEW_IN_PROGRESS) {
+             LOGE("startPreview is already in progress, doing nothing.");
+@@ -728,11 +730,13 @@ namespace android {
+         if (mCameraState != QCS_IDLE) {
+             LOGE("startPreview X Camera state is %s, expecting QCS_IDLE!",
+                 getCameraStateStr(mCameraState));
++            LOGE("spdq: qcamera startPreviewInternal bad-state=%s", getCameraStateStr(mCameraState));
+             return INVALID_OPERATION;
+         }
+ 
+         if (!initPreview()) {
+             LOGE("startPreview X initPreview failed.  Not starting preview.");
++            LOGE("spdq: qcamera startPreviewInternal initPreview failed");
+             return UNKNOWN_ERROR;
+         }
+ 
+@@ -744,6 +748,7 @@ namespace android {
+         mCameraState = QCS_INTERNAL_PREVIEW_REQUESTED;
+         camera_ret_code_type qret =
+             LINK_camera_start_preview(camera_cb, this);
++        LOGI("spdq: qcamera startPreviewInternal camera_start_preview qret=%d", qret);
+         if (qret == CAMERA_SUCCESS) {
+             while(mCameraState != QCS_PREVIEW_IN_PROGRESS &&
+                   mCameraState != QCS_ERROR) {
+@@ -757,6 +762,10 @@ namespace android {
+         }
+ 
+         LOGV("startPreview X");
++        LOGI("spdq: qcamera startPreviewInternal exit state=%s ret=%d previewHeap=%p",
++             getCameraStateStr(mCameraState),
++             (mCameraState == QCS_PREVIEW_IN_PROGRESS ? NO_ERROR : UNKNOWN_ERROR),
++             mPreviewHeap.get());
+         return mCameraState == QCS_PREVIEW_IN_PROGRESS ?
+             NO_ERROR : UNKNOWN_ERROR;
+     }
+@@ -804,9 +813,12 @@ namespace android {
+     {
+         Mutex::Autolock l(&mLock);
+         Mutex::Autolock stateLock(&mStateLock);
+-        return startPreviewInternal(pcb, puser,
+-                                    mRecordingCallback,
+-                                    mRecordingCallbackCookie);
++        LOGI("spdq: qcamera startPreview enter state=%s", getCameraStateStr(mCameraState));
++        status_t err = startPreviewInternal(pcb, puser,
++                                            mRecordingCallback,
++                                            mRecordingCallbackCookie);
++        LOGI("spdq: qcamera startPreview exit err=%d state=%s", err, getCameraStateStr(mCameraState));
++        return err;
+     }
+ 
+     void QualcommCameraHardware::stopPreview() {

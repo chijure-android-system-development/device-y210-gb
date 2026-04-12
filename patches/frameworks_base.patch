@@ -1,0 +1,318 @@
+diff --git a/core/jni/Android.mk b/core/jni/Android.mk
+index bb01d9d1f48..8ded188d10b 100644
+--- a/core/jni/Android.mk
++++ b/core/jni/Android.mk
+@@ -152,16 +152,19 @@ ifeq ($(BOARD_HAVE_FM_RADIO),true)
+         BOARD_FM_DEVICE := $(BOARD_WLAN_DEVICE)
+     endif
+ 
+-    ifeq ($(BOARD_FM_DEVICE),si4709)
+-        LOCAL_SRC_FILES += android_hardware_fm_si4709.cpp
+-    endif
+-    ifeq ($(BOARD_FM_DEVICE),si4708)
+-        LOCAL_SRC_FILES += android_hardware_fm_si4708.cpp
+-    endif
+-    ifeq ($(BOARD_FM_DEVICE),bcm2049)
+-	LOCAL_CFLAGS += -DHAS_BCM20780
+-        LOCAL_SRC_FILES += android_hardware_fm_bcm4325.cpp
+-    endif
++	    ifeq ($(BOARD_FM_DEVICE),si4709)
++	        LOCAL_SRC_FILES += android_hardware_fm_si4709.cpp
++	    endif
++	    ifeq ($(BOARD_FM_DEVICE),si4708)
++	        LOCAL_SRC_FILES += android_hardware_fm_si4708.cpp
++	    endif
++	    ifeq ($(BOARD_FM_DEVICE),qcom)
++	        LOCAL_SRC_FILES += android_hardware_fm_qcom.cpp
++	    endif
++	    ifeq ($(BOARD_FM_DEVICE),bcm2049)
++		LOCAL_CFLAGS += -DHAS_BCM20780
++	        LOCAL_SRC_FILES += android_hardware_fm_bcm4325.cpp
++	    endif
+     ifeq ($(BOARD_FM_DEVICE),bcm4329)
+         LOCAL_SRC_FILES += android_hardware_fm_bcm4325.cpp
+     endif
+diff --git a/include/camera/CameraParameters.h b/include/camera/CameraParameters.h
+index 539142685f5..4fe1f957862 100644
+--- a/include/camera/CameraParameters.h
++++ b/include/camera/CameraParameters.h
+@@ -359,6 +359,11 @@ public:
+     // Example value: "yuv420sp" or PIXEL_FORMAT_XXX constants. Read only.
+     static const char KEY_VIDEO_FRAME_FORMAT[];
+ 
++    // Enable/disable or select high frame rate video recording mode.
++    // Vendor extensions (not part of the original GB public API) may use this
++    // key to control HFR behavior.
++    static const char KEY_VIDEO_HIGH_FRAME_RATE[];
++
+     // Value for KEY_ZOOM_SUPPORTED or KEY_SMOOTH_ZOOM_SUPPORTED.
+     static const char TRUE[];
+ 
+diff --git a/libs/camera/CameraParameters.cpp b/libs/camera/CameraParameters.cpp
+index 703f2a9c5fa..d5def45a8e2 100644
+--- a/libs/camera/CameraParameters.cpp
++++ b/libs/camera/CameraParameters.cpp
+@@ -81,6 +81,7 @@ const char CameraParameters::KEY_ZOOM_SUPPORTED[] = "zoom-supported";
+ const char CameraParameters::KEY_SMOOTH_ZOOM_SUPPORTED[] = "smooth-zoom-supported";
+ const char CameraParameters::KEY_FOCUS_DISTANCES[] = "focus-distances";
+ const char CameraParameters::KEY_VIDEO_FRAME_FORMAT[] = "video-frame-format";
++const char CameraParameters::KEY_VIDEO_HIGH_FRAME_RATE[] = "video-hfr";
+ const char CameraParameters::KEY_CAF[] = "continuous-af";
+ const char CameraParameters::KEY_CONTINUOUS_AF[] = "continuous-af";
+ const char CameraParameters::KEY_SUPPORTED_CAF[] = "continuous-af-values";
+diff --git a/telephony/java/com/android/internal/telephony/DataConnection.java b/telephony/java/com/android/internal/telephony/DataConnection.java
+index 1d6da32e333..e101eb93730 100644
+--- a/telephony/java/com/android/internal/telephony/DataConnection.java
++++ b/telephony/java/com/android/internal/telephony/DataConnection.java
+@@ -419,7 +419,21 @@ public abstract class DataConnection extends HierarchicalStateMachine {
+ //                log("  response[" + i + "]='" + response[i] + "'");
+ //            }
+             if (response.length >= 2) {
+-                cid = Integer.parseInt(response[0]);
++                boolean malformedQcomDataCall = response.length >= 6
++                        && response[0] == null
++                        && response[4] != null
++                        && response[5] != null;
++
++                if (malformedQcomDataCall) {
++                    cid = 0;
++                    if (DBG) {
++                        log("Normalizing malformed setup data call response for "
++                                + response[4]);
++                    }
++                } else {
++                    cid = Integer.parseInt(response[0]);
++                }
++
+                 if (response.length > 2) {
+                     // Samsung CDMA devices do not export gateway/ip to the framework correctly
+                     // if using FroYo RIL blobs, we can extract it from system properties
+@@ -429,6 +443,11 @@ public abstract class DataConnection extends HierarchicalStateMachine {
+                         prefix = "net." + interfaceName + ".";
+                         ipAddress = SystemProperties.get(prefix + "local-ip");
+                         gatewayAddress = SystemProperties.get(prefix + "remote-ip");
++                    } else if (malformedQcomDataCall) {
++                        interfaceName = response[4];
++                        prefix = "net." + interfaceName + ".";
++                        ipAddress = response[5];
++                        gatewayAddress = SystemProperties.get(prefix + "gw");
+                     } else {
+                         interfaceName = response[1];
+                         prefix = "net." + interfaceName + ".";
+@@ -437,6 +456,18 @@ public abstract class DataConnection extends HierarchicalStateMachine {
+                     }
+                     dnsServers[0] = SystemProperties.get(prefix + "dns1");
+                     dnsServers[1] = SystemProperties.get(prefix + "dns2");
++                    if (malformedQcomDataCall) {
++                        if ((dnsServers[0] == null || dnsServers[0].length() == 0)
++                                && response.length > 6 && response[6] != null) {
++                            String[] dns = response[6].split(" ");
++                            if (dns.length > 0) dnsServers[0] = dns[0];
++                            if (dns.length > 1) dnsServers[1] = dns[1];
++                        }
++                        if ((gatewayAddress == null || gatewayAddress.length() == 0)
++                                && response.length > 7) {
++                            gatewayAddress = response[7];
++                        }
++                    }
+                     if (DBG) {
+                         log("interface=" + interfaceName + " ipAddress=" + ipAddress
+                             + " gateway=" + gatewayAddress + " DNS1=" + dnsServers[0]
+diff --git a/telephony/java/com/android/internal/telephony/QualcommNoSimReadyRIL.java b/telephony/java/com/android/internal/telephony/QualcommNoSimReadyRIL.java
+index bdc5ba4c936..fcaa75c5487 100644
+--- a/telephony/java/com/android/internal/telephony/QualcommNoSimReadyRIL.java
++++ b/telephony/java/com/android/internal/telephony/QualcommNoSimReadyRIL.java
+@@ -285,7 +285,9 @@ public class QualcommNoSimReadyRIL extends RIL implements CommandsInterface {
+             case 1034: ret = responseVoid(p); break; // RIL_UNSOL_CDMA_SUBSCRIPTION_SOURCE_CHANGED
+             case 1035: ret = responseVoid(p); break; // RIL_UNSOL_CDMA_PRL_CHANGED
+             case 1036: ret = responseVoid(p); break; // RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED
+-            case 1037: ret = responseVoid(p); break; // RIL_UNSOL_EXIT_EMERGENCY_CALLBACK_MODE
++            // QCRIL variants disagree on 1037. Some report it as EXIT_ECBM,
++            // others as DATA_NETWORK_STATE_CHANGED. We treat it as void.
++            case 1037: ret = responseVoid(p); break;
+ 
+             default:
+                 throw new RuntimeException("Unrecognized unsol response: " + response);
+@@ -591,7 +593,11 @@ public class QualcommNoSimReadyRIL extends RIL implements CommandsInterface {
+                 break;
+             case 1032:
+                 break;
+-            case 1033:
++            case 1033: // QCRIL: DATA_NETWORK_STATE_CHANGED
++            case 1037: // QCRIL variant: may also signal data network state changed
++                if (RILJ_LOGD) unsljLog(response);
++                mNetworkStateRegistrants
++                    .notifyRegistrants(new AsyncResult(null, null, null));
+                 break;
+             case 1034:
+                 break;
+@@ -599,8 +605,6 @@ public class QualcommNoSimReadyRIL extends RIL implements CommandsInterface {
+                 break;
+             case 1036:
+                 break;
+-            case 1037:
+-                break;
+ 
+         }
+     }
+@@ -609,7 +613,7 @@ public class QualcommNoSimReadyRIL extends RIL implements CommandsInterface {
+         CommandsInterface.RadioState radioState;
+         HandlerThread handlerThread;
+         Looper looper;
+-        IccHandler iccHandler;
++        CommandsInterface.RadioState currentRadioState = getRadioState();
+ 
+         switch (stateCode) {
+             case RIL_INT_RADIO_OFF:
+@@ -628,11 +632,22 @@ public class QualcommNoSimReadyRIL extends RIL implements CommandsInterface {
+                     looper = mIccThread.getLooper();
+                     mIccHandler = new IccHandler(this,looper);
+                     mIccHandler.run();
++                } else {
++                    mIccHandler.onRadioOn();
+                 }
++
+                 if (mPhoneType == RILConstants.CDMA_PHONE) {
+-                    radioState = CommandsInterface.RadioState.RUIM_NOT_READY;
++                    if (currentRadioState.isRUIMReady()) {
++                        radioState = currentRadioState;
++                    } else {
++                        radioState = CommandsInterface.RadioState.RUIM_NOT_READY;
++                    }
+                 } else {
+-                    radioState = CommandsInterface.RadioState.SIM_NOT_READY;
++                    if (currentRadioState.isSIMReady()) {
++                        radioState = currentRadioState;
++                    } else {
++                        radioState = CommandsInterface.RadioState.SIM_NOT_READY;
++                    }
+                 }
+                 setRadioState(radioState);
+                 break;
+@@ -758,10 +773,13 @@ public class QualcommNoSimReadyRIL extends RIL implements CommandsInterface {
+             }
+         }
+ 
++        public void onRadioOn() {
++            sendMessage(obtainMessage(EVENT_RADIO_ON));
++        }
++
+         public void run () {
+             mRil.registerForIccStatusChanged(this, EVENT_ICC_STATUS_CHANGED, null);
+-            Message msg = obtainMessage(EVENT_RADIO_ON);
+-            mRil.getIccCardStatus(msg);
++            onRadioOn();
+         }
+     }
+ }
+diff --git a/telephony/java/com/android/internal/telephony/RIL.java b/telephony/java/com/android/internal/telephony/RIL.java
+index 86534d70c52..a6e10e2cc3f 100644
+--- a/telephony/java/com/android/internal/telephony/RIL.java
++++ b/telephony/java/com/android/internal/telephony/RIL.java
+@@ -2406,6 +2406,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+             case RIL_UNSOL_RESPONSE_RADIO_STATE_CHANGED: ret =  responseVoid(p); break;
+             case RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED: ret =  responseVoid(p); break;
+             case RIL_UNSOL_RESPONSE_NETWORK_STATE_CHANGED: ret =  responseVoid(p); break;
++            case RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED: ret = responseVoid(p); break;
+             case RIL_UNSOL_RESPONSE_NEW_SMS: ret =  responseString(p); break;
+             case RIL_UNSOL_RESPONSE_NEW_SMS_STATUS_REPORT: ret =  responseString(p); break;
+             case RIL_UNSOL_RESPONSE_NEW_SMS_ON_SIM: ret =  responseInts(p); break;
+@@ -2463,6 +2464,14 @@ public class RIL extends BaseCommands implements CommandsInterface {
+                 mNetworkStateRegistrants
+                     .notifyRegistrants(new AsyncResult(null, null, null));
+             break;
++            case RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED:
++                if (RILJ_LOGD) unsljLog(response);
++
++                // Qualcomm stacks may send this instead of (or in addition to)
++                // UNSOL_RESPONSE_NETWORK_STATE_CHANGED.
++                mNetworkStateRegistrants
++                    .notifyRegistrants(new AsyncResult(null, null, null));
++            break;
+             case RIL_UNSOL_RESPONSE_NEW_SMS: {
+                 if (RILJ_LOGD) unsljLog(response);
+ 
+@@ -3389,6 +3398,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+             case RIL_UNSOL_RESPONSE_RADIO_STATE_CHANGED: return "UNSOL_RESPONSE_RADIO_STATE_CHANGED";
+             case RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED: return "UNSOL_RESPONSE_CALL_STATE_CHANGED";
+             case RIL_UNSOL_RESPONSE_NETWORK_STATE_CHANGED: return "UNSOL_RESPONSE_NETWORK_STATE_CHANGED";
++            case RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED: return "UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED";
+             case RIL_UNSOL_RESPONSE_NEW_SMS: return "UNSOL_RESPONSE_NEW_SMS";
+             case RIL_UNSOL_RESPONSE_NEW_SMS_STATUS_REPORT: return "UNSOL_RESPONSE_NEW_SMS_STATUS_REPORT";
+             case RIL_UNSOL_RESPONSE_NEW_SMS_ON_SIM: return "UNSOL_RESPONSE_NEW_SMS_ON_SIM";
+diff --git a/telephony/java/com/android/internal/telephony/RILConstants.java b/telephony/java/com/android/internal/telephony/RILConstants.java
+index 0686791b137..9289d7a323e 100644
+--- a/telephony/java/com/android/internal/telephony/RILConstants.java
++++ b/telephony/java/com/android/internal/telephony/RILConstants.java
+@@ -274,4 +274,7 @@ cat include/telephony/ril.h | \
+     int RIL_UNSOL_OEM_HOOK_RAW = 1028;
+     int RIL_UNSOL_RINGBACK_TONE = 1029;
+     int RIL_UNSOL_RESEND_INCALL_MUTE = 1030;
++    // Qualcomm RIL (qcril) on some targets reports this as an extra
++    // "data network state changed" event. Treat it as void.
++    int RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED = 1037;
+ }
+diff --git a/telephony/java/com/android/internal/telephony/gsm/GsmDataConnectionTracker.java b/telephony/java/com/android/internal/telephony/gsm/GsmDataConnectionTracker.java
+index bf72c381d95..e88aa28d734 100644
+--- a/telephony/java/com/android/internal/telephony/gsm/GsmDataConnectionTracker.java
++++ b/telephony/java/com/android/internal/telephony/gsm/GsmDataConnectionTracker.java
+@@ -150,6 +150,22 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
+     static final String APN_ID = "apn_id";
+     private boolean canSetPreferApn = false;
+ 
++    private String getOperatorNumeric() {
++        String operator = mGsmPhone.mSIMRecords.getSIMOperatorNumeric();
++
++        if (operator == null || operator.length() == 0) {
++            operator = SystemProperties.get(
++                    com.android.internal.telephony.TelephonyProperties.PROPERTY_OPERATOR_NUMERIC,
++                    "");
++        }
++
++        return operator;
++    }
++
++    private boolean hasOperatorNumeric() {
++        return getOperatorNumeric().length() > 0;
++    }
++
+     // for tracking retries on the default APN
+     private RetryManager mDefaultRetryManager;
+     // for tracking retries on a secondary APN
+@@ -447,7 +463,7 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
+ 
+         if ((state == State.IDLE || state == State.SCANNING)
+                 && (gprsState == ServiceState.STATE_IN_SERVICE || !noAutoAttach)
+-                && mGsmPhone.mSIMRecords.getRecordsLoaded()
++                && (mGsmPhone.mSIMRecords.getRecordsLoaded() || hasOperatorNumeric())
+                 && (mGsmPhone.mSST.isConcurrentVoiceAndData() ||
+                         phone.getState() == Phone.State.IDLE )
+                 && isDataAllowed()
+@@ -455,6 +471,9 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
+                 && desiredPowerState ) {
+ 
+             if (state == State.IDLE) {
++                if ((allApns == null || allApns.isEmpty()) && hasOperatorNumeric()) {
++                    createAllApnList();
++                }
+                 waitingApns = buildWaitingApns();
+                 waitingApnsPermanentFailureCountDown = waitingApns.size();
+                 if (waitingApns.isEmpty()) {
+@@ -1267,7 +1286,7 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
+      */
+     private void createAllApnList() {
+         allApns = new ArrayList<ApnSetting>();
+-        String operator = mGsmPhone.mSIMRecords.getSIMOperatorNumeric();
++        String operator = getOperatorNumeric();
+ 
+         if (operator != null) {
+             String selection = "numeric = '" + operator + "'";
+@@ -1346,7 +1365,7 @@ public final class GsmDataConnectionTracker extends DataConnectionTracker {
+             return apnList;
+         }
+ 
+-        String operator = mGsmPhone.mSIMRecords.getSIMOperatorNumeric();
++        String operator = getOperatorNumeric();
+ 
+         if (mRequestedApnType.equals(Phone.APN_TYPE_DEFAULT)) {
+             if (canSetPreferApn && preferredApn != null) {

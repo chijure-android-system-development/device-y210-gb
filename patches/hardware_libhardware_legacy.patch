@@ -1,0 +1,322 @@
+diff --git a/wifi/wifi.c b/wifi/wifi.c
+index 167402b..3b7a913 100644
+--- a/wifi/wifi.c
++++ b/wifi/wifi.c
+@@ -81,6 +81,8 @@ static char iface[PROPERTY_VALUE_MAX];
+ #define WIFI_DRIVER_LOADER_DELAY	1000000
+ 
+ static const char IFACE_DIR[]           = "/data/system/wpa_supplicant";
++static const char SOCKET_DIR[]          = "/data/misc/wifi/sockets";
++static const char ATH_IFACE_DIR[]       = "/data/misc/wpa_supplicant";
+ static const char DRIVER_MODULE_NAME[]  = WIFI_DRIVER_MODULE_NAME;
+ static const char DRIVER_MODULE_TAG[]   = WIFI_DRIVER_MODULE_NAME " ";
+ static const char DRIVER_MODULE_PATH[]  = WIFI_DRIVER_MODULE_PATH;
+@@ -89,6 +91,8 @@ static const char FIRMWARE_LOADER[]     = WIFI_FIRMWARE_LOADER;
+ static const char DRIVER_PROP_NAME[]    = "wlan.driver.status";
+ static const char SUPPLICANT_NAME[]     = "wpa_supplicant";
+ static const char SUPP_PROP_NAME[]      = "init.svc.wpa_supplicant";
++static const char ATH_SUPPLICANT_NAME[] = "ath_supplicant";
++static const char ATH_SUPP_PROP_NAME[]  = "init.svc.ath_supplicant";
+ static const char SUPP_CONFIG_TEMPLATE[]= "/system/etc/wifi/wpa_supplicant.conf";
+ static const char SUPP_CONFIG_FILE[]    = "/data/misc/wifi/wpa_supplicant.conf";
+ static const char MODULE_FILE[]         = "/proc/modules";
+@@ -220,6 +224,42 @@ out:
+ 
+ /* end rfkill support */
+ 
++static int wifi_uses_ath_supplicant(void)
++{
++    return !strncmp(DRIVER_MODULE_NAME, "ar6000", 6);
++}
++
++static const char *wifi_get_supplicant_name(void)
++{
++    return wifi_uses_ath_supplicant() ? ATH_SUPPLICANT_NAME : SUPPLICANT_NAME;
++}
++
++static const char *wifi_get_supplicant_prop_name(void)
++{
++    return wifi_uses_ath_supplicant() ? ATH_SUPP_PROP_NAME : SUPP_PROP_NAME;
++}
++
++static const char *wifi_get_supplicant_iface_dir(void)
++{
++    return wifi_uses_ath_supplicant() ? ATH_IFACE_DIR : IFACE_DIR;
++}
++
++static void wifi_cleanup_remote_sockets(const char *ifname)
++{
++    char path[PATH_MAX];
++
++    if (ifname == NULL || ifname[0] == '\0') {
++        return;
++    }
++
++    snprintf(path, sizeof(path), "%s/%s", ATH_IFACE_DIR, ifname);
++    unlink(path);
++    snprintf(path, sizeof(path), "%s/%s", SOCKET_DIR, ifname);
++    unlink(path);
++    snprintf(path, sizeof(path), "%s/%s", IFACE_DIR, ifname);
++    unlink(path);
++}
++
+ static int insmod(const char *filename, const char *args)
+ {
+     void *module;
+@@ -437,7 +477,6 @@ int wifi_load_driver()
+ {
+     char driver_status[PROPERTY_VALUE_MAX];
+     int count = 100; /* wait at most 20 seconds for completion */
+-
+     if (check_driver_loaded()) {
+         return 0;
+     }
+@@ -447,6 +486,30 @@ int wifi_load_driver()
+         property_set("ctl.start", PRELOADER);
+     }
+ 
++    /*
++     * Huawei's AR6000 userspace is not ready immediately after insmod.
++     * Route the request through wlan_tool so it can wait for wmiconfig
++     * and bring up the real interface before the framework proceeds.
++     */
++    if (!strncmp(DRIVER_MODULE_NAME, "ar6000", 6)) {
++        property_set(DRIVER_PROP_NAME, "insmod");
++        sched_yield();
++        while (count-- > 0) {
++            if (property_get(DRIVER_PROP_NAME, driver_status, NULL)) {
++                if (strcmp(driver_status, "ok") == 0)
++                    return 0;
++                else if (strcmp(driver_status, "failed") == 0) {
++                    wifi_unload_driver();
++                    return -1;
++                }
++            }
++            usleep(200000);
++        }
++        property_set(DRIVER_PROP_NAME, "timeout");
++        wifi_unload_driver();
++        return -1;
++    }
++
+ #ifdef WIFI_EXT_MODULE_PATH
+     if (insmod(EXT_MODULE_PATH, EXT_MODULE_ARG) < 0)
+         return -1;
+@@ -488,6 +551,22 @@ int wifi_unload_driver()
+ {
+     int count = 20; /* wait at most 10 seconds for completion */
+ 
++    if (!strncmp(DRIVER_MODULE_NAME, "ar6000", 6)) {
++        char driver_status[PROPERTY_VALUE_MAX];
++
++        property_set(DRIVER_PROP_NAME, "rmmod");
++        sched_yield();
++
++        while (count-- > 0) {
++            if (property_get(DRIVER_PROP_NAME, driver_status, NULL)
++                    && strcmp(driver_status, "unloaded") == 0) {
++                return 0;
++            }
++            usleep(500000);
++        }
++        return -1;
++    }
++
+     if (rmmod(DRIVER_MODULE_NAME) == 0) {
+         while (count-- > 0) {
+             if (!check_driver_loaded())
+@@ -561,6 +640,11 @@ int ensure_config_file_exists()
+ int wifi_start_supplicant()
+ {
+     char supp_status[PROPERTY_VALUE_MAX] = {'\0'};
++    char ifname[PROPERTY_VALUE_MAX];
++    char ifpath[PATH_MAX];
++    int iface_wait_count;
++    const char *supplicant_name = wifi_get_supplicant_name();
++    const char *supplicant_prop_name = wifi_get_supplicant_prop_name();
+     int count = 200; /* wait at most 20 seconds for completion */
+ #ifdef HAVE_LIBC_SYSTEM_PROPERTIES
+     const prop_info *pi;
+@@ -568,7 +652,7 @@ int wifi_start_supplicant()
+ #endif
+ 
+     /* Check whether already running */
+-    if (property_get(SUPP_PROP_NAME, supp_status, NULL)
++    if (property_get(supplicant_prop_name, supp_status, NULL)
+             && strcmp(supp_status, "running") == 0) {
+         return 0;
+     }
+@@ -590,25 +674,37 @@ int wifi_start_supplicant()
+      * it starts in the stopped state and never manages to start
+      * running at all.
+      */
+-    pi = __system_property_find(SUPP_PROP_NAME);
++    pi = __system_property_find(supplicant_prop_name);
+     if (pi != NULL) {
+         serial = pi->serial;
+     }
+ #endif
+     /* The ar6k driver needs the interface up in order to scan! */
+     if (!strncmp(DRIVER_MODULE_NAME, "ar6000", 6)) {
++        property_get("wifi.interface", ifname, "eth0");
+         ifc_init();
+-        ifc_up("wlan0");
++        wifi_cleanup_remote_sockets(ifname);
++        snprintf(ifpath, sizeof(ifpath), "/sys/class/net/%s", ifname);
++        iface_wait_count = 200; /* wait at most 20 seconds for the interface */
++        while (iface_wait_count-- > 0) {
++            if (access(ifpath, F_OK) == 0 && ifc_up(ifname) == 0) {
++                break;
++            }
++            usleep(100000);
++        }
++        if (iface_wait_count <= 0) {
++            LOGE("wifi_start_supplicant: interface %s did not become ready", ifname);
++        }
+         sleep(1);
+     }
+ 
+-    property_set("ctl.start", SUPPLICANT_NAME);
++    property_set("ctl.start", supplicant_name);
+     sched_yield();
+ 
+     while (count-- > 0) {
+ #ifdef HAVE_LIBC_SYSTEM_PROPERTIES
+         if (pi == NULL) {
+-            pi = __system_property_find(SUPP_PROP_NAME);
++            pi = __system_property_find(supplicant_prop_name);
+         }
+         if (pi != NULL) {
+             __system_property_read(pi, NULL, supp_status);
+@@ -620,7 +716,7 @@ int wifi_start_supplicant()
+             }
+         }
+ #else
+-        if (property_get(SUPP_PROP_NAME, supp_status, NULL)) {
++        if (property_get(supplicant_prop_name, supp_status, NULL)) {
+             if (strcmp(supp_status, "running") == 0)
+                 return 0;
+         }
+@@ -633,19 +729,21 @@ int wifi_start_supplicant()
+ int wifi_stop_supplicant()
+ {
+     char supp_status[PROPERTY_VALUE_MAX] = {'\0'};
++    const char *supplicant_name = wifi_get_supplicant_name();
++    const char *supplicant_prop_name = wifi_get_supplicant_prop_name();
+     int count = 50; /* wait at most 5 seconds for completion */
+ 
+     /* Check whether supplicant already stopped */
+-    if (property_get(SUPP_PROP_NAME, supp_status, NULL)
++    if (property_get(supplicant_prop_name, supp_status, NULL)
+         && strcmp(supp_status, "stopped") == 0) {
+         return 0;
+     }
+ 
+-    property_set("ctl.stop", SUPPLICANT_NAME);
++    property_set("ctl.stop", supplicant_name);
+     sched_yield();
+ 
+     while (count-- > 0) {
+-        if (property_get(SUPP_PROP_NAME, supp_status, NULL)) {
++        if (property_get(supplicant_prop_name, supp_status, NULL)) {
+             if (strcmp(supp_status, "stopped") == 0)
+                 return 0;
+         }
+@@ -657,10 +755,14 @@ int wifi_stop_supplicant()
+ int wifi_connect_to_supplicant()
+ {
+     char ifname[256];
++    char legacy_ifname[256];
+     char supp_status[PROPERTY_VALUE_MAX] = {'\0'};
++    const char *supplicant_prop_name = wifi_get_supplicant_prop_name();
++    const char *iface_dir = wifi_get_supplicant_iface_dir();
++    int tries;
+ 
+     /* Make sure supplicant is running */
+-    if (!property_get(SUPP_PROP_NAME, supp_status, NULL)
++    if (!property_get(supplicant_prop_name, supp_status, NULL)
+             || strcmp(supp_status, "running") != 0) {
+         LOGE("Supplicant not running, cannot connect");
+         return -1;
+@@ -668,31 +770,62 @@ int wifi_connect_to_supplicant()
+ 
+     property_get("wifi.interface", iface, WIFI_TEST_INTERFACE);
+ 
+-    if (access(IFACE_DIR, F_OK) == 0) {
+-        snprintf(ifname, sizeof(ifname), "%s/%s", IFACE_DIR, iface);
++    if (wifi_uses_ath_supplicant()) {
++        snprintf(ifname, sizeof(ifname), "%s/%s", iface_dir, iface);
++        if (access(ifname, F_OK) != 0) {
++            snprintf(ifname, sizeof(ifname), "%s/%s", SOCKET_DIR, iface);
++            if (access(ifname, F_OK) != 0) {
++                strlcpy(ifname, iface, sizeof(ifname));
++            }
++        }
+     } else {
+-        strlcpy(ifname, iface, sizeof(ifname));
++        if (access(iface_dir, F_OK) == 0) {
++            snprintf(ifname, sizeof(ifname), "%s/%s", iface_dir, iface);
++        } else {
++            strlcpy(ifname, iface, sizeof(ifname));
++        }
+     }
+ 
+-    ctrl_conn = wpa_ctrl_open(ifname);
+-    if (ctrl_conn == NULL) {
+-        LOGE("Unable to open connection to supplicant on \"%s\": %s",
+-             ifname, strerror(errno));
+-        return -1;
+-    }
+-    monitor_conn = wpa_ctrl_open(ifname);
+-    if (monitor_conn == NULL) {
+-        wpa_ctrl_close(ctrl_conn);
+-        ctrl_conn = NULL;
+-        return -1;
+-    }
+-    if (wpa_ctrl_attach(monitor_conn) != 0) {
++    for (tries = 0; tries < 20; ++tries) {
++        ctrl_conn = wpa_ctrl_open(ifname);
++        if (ctrl_conn == NULL && strcmp(ifname, iface) != 0) {
++            strlcpy(legacy_ifname, iface, sizeof(legacy_ifname));
++            ctrl_conn = wpa_ctrl_open(legacy_ifname);
++            if (ctrl_conn != NULL) {
++                strlcpy(ifname, legacy_ifname, sizeof(ifname));
++            }
++        }
++        if (ctrl_conn == NULL) {
++            usleep(250000);
++            continue;
++        }
++
++        monitor_conn = wpa_ctrl_open(ifname);
++        if (monitor_conn == NULL && strcmp(ifname, iface) != 0) {
++            monitor_conn = wpa_ctrl_open(iface);
++            if (monitor_conn != NULL) {
++                strlcpy(ifname, iface, sizeof(ifname));
++            }
++        }
++        if (monitor_conn == NULL) {
++            wpa_ctrl_close(ctrl_conn);
++            ctrl_conn = NULL;
++            usleep(250000);
++            continue;
++        }
++        if (wpa_ctrl_attach(monitor_conn) == 0) {
++            return 0;
++        }
++
+         wpa_ctrl_close(monitor_conn);
+         wpa_ctrl_close(ctrl_conn);
+-        ctrl_conn = monitor_conn = NULL;
+-        return -1;
++        monitor_conn = NULL;
++        ctrl_conn = NULL;
++        usleep(250000);
+     }
+-    return 0;
++
++    LOGE("Unable to attach to supplicant on \"%s\": %s", ifname, strerror(errno));
++    return -1;
+ }
+ 
+ int wifi_send_command(struct wpa_ctrl *ctrl, const char *cmd, char *reply, size_t *reply_len)

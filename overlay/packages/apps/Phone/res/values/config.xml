@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     Minimal Phone app overlay for Huawei Y210 (CM7/GB).
+
+     Route mic mute/unmute through AudioManager so the audio HAL can
+     control the QCOM SND RPC mic_mute flag during calls.
+-->
+<resources>
+    <bool name="send_mic_mute_to_AudioManager">true</bool>
+</resources>

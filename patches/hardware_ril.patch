@@ -1,0 +1,144 @@
+diff --git a/libril/ril.cpp b/libril/ril.cpp
+index 9d9df90..8a7259f 100644
+--- a/libril/ril.cpp
++++ b/libril/ril.cpp
+@@ -51,6 +51,15 @@
+ 
+ #include <ril_event.h>
+ 
++// Some vendor RIL implementations (e.g. Qualcomm blobs) are built against a
++// newer `libril` that exports `RIL_setRilSocketName()`. CM7's `libril` doesn't
++// provide it, which prevents those blobs from loading at runtime.
++//
++// For this single-RIL device bring-up we keep the legacy fixed socket names
++// (`rild` / `rild-debug`) and expose the symbol as a no-op to satisfy dynamic
++// linking.
++extern "C" void RIL_setRilSocketName(const char* /*name*/) {}
++
+ namespace android {
+ 
+ #define PHONE_PROCESS "radio"
+@@ -245,6 +254,19 @@ static UserCallbackInfo * internalRequestTimedCallback
+     (RIL_TimedCallback callback, void *param,
+         const struct timeval *relativeTime);
+ 
++static const char *sanitizeRilString(const char *value) {
++    if (value == NULL) {
++        return NULL;
++    }
++
++    if ((unsigned long)value < 4096UL) {
++        LOGW("sanitizeRilString: dropping suspicious pointer %p", value);
++        return NULL;
++    }
++
++    return value;
++}
++
+ /** Index == requestNumber */
+ static CommandInfo s_commands[] = {
+ #include "ril_commands.h"
+@@ -1337,8 +1359,9 @@ static int responseStrings(Parcel &p, void *response, size_t responselen, bool n
+                 continue;
+             }
+ #endif
+-            appendPrintBuf("%s%s,", printBuf, (char*)p_cur[i]);
+-            writeStringToParcel (p, p_cur[i]);
++            const char *safeString = sanitizeRilString(p_cur[i]);
++            appendPrintBuf("%s%s,", printBuf, safeString != NULL ? safeString : "(null)");
++            writeStringToParcel (p, safeString);
+         }
+         removeLastChar;
+         closeResponse;
+@@ -1352,12 +1375,13 @@ static int responseStrings(Parcel &p, void *response, size_t responselen, bool n
+  * FIXME currently ignores responselen
+  */
+ static int responseString(Parcel &p, void *response, size_t responselen) {
++    const char *safeString = sanitizeRilString((const char *) response);
+     /* one string only */
+     startResponse;
+-    appendPrintBuf("%s%s", printBuf, (char*)response);
++    appendPrintBuf("%s%s", printBuf, safeString != NULL ? safeString : "(null)");
+     closeResponse;
+ 
+-    writeStringToParcel(p, (const char *)response);
++    writeStringToParcel(p, safeString);
+ 
+     return 0;
+ }
+@@ -1484,17 +1508,20 @@ static int responseDataCallList(Parcel &p, void *response, size_t responselen)
+     startResponse;
+     int i;
+     for (i = 0; i < num; i++) {
++        const char *safeType = sanitizeRilString(p_cur[i].type);
++        const char *safeApn = sanitizeRilString(p_cur[i].apn);
++        const char *safeAddress = sanitizeRilString(p_cur[i].address);
+         p.writeInt32(p_cur[i].cid);
+         p.writeInt32(p_cur[i].active);
+-        writeStringToParcel(p, p_cur[i].type);
+-        writeStringToParcel(p, p_cur[i].apn);
+-        writeStringToParcel(p, p_cur[i].address);
++        writeStringToParcel(p, safeType);
++        writeStringToParcel(p, safeApn);
++        writeStringToParcel(p, safeAddress);
+         appendPrintBuf("%s[cid=%d,%s,%s,%s,%s],", printBuf,
+             p_cur[i].cid,
+             (p_cur[i].active==0)?"down":"up",
+-            (char*)p_cur[i].type,
+-            (char*)p_cur[i].apn,
+-            (char*)p_cur[i].address);
++            safeType != NULL ? safeType : "(null)",
++            safeApn != NULL ? safeApn : "(null)",
++            safeAddress != NULL ? safeAddress : "(null)");
+     }
+     removeLastChar;
+     closeResponse;
+@@ -2553,11 +2580,22 @@ RIL_register (const RIL_RadioFunctions *callbacks) {
+     int ret;
+     int flags;
+ 
+-    if (callbacks == NULL || ((callbacks->version != RIL_VERSION)
+-                && (callbacks->version != 2))) { // Remove when partners upgrade to version 3
++    if (callbacks == NULL) {
++        LOGE("RIL_register: RIL_RadioFunctions * null (expected %d)", RIL_VERSION);
++        return;
++    }
++
++    // Many legacy Qualcomm/Huawei blobs report older/newer version numbers while
++    // still using the same minimal RIL_RadioFunctions struct layout (6 fields).
++    // Accept these versions to allow bring-up.
++    if ((callbacks->version != RIL_VERSION)
++                && (callbacks->version != 6)
++                && (callbacks->version != 4)
++                && (callbacks->version != 2)
++                && (callbacks->version != 1)) { // Remove when partners upgrade to version 3
+         LOGE(
+-            "RIL_register: RIL_RadioFunctions * null or invalid version"
+-            " (expected %d)", RIL_VERSION);
++            "RIL_register: invalid RIL_RadioFunctions version %d (expected %d)",
++            callbacks->version, RIL_VERSION);
+         return;
+     }
+     if (callbacks->version < 3) {
+diff --git a/libril/ril_unsol_commands.h b/libril/ril_unsol_commands.h
+index 3660702..c50aad1 100644
+--- a/libril/ril_unsol_commands.h
++++ b/libril/ril_unsol_commands.h
+@@ -44,4 +44,16 @@
+     {RIL_UNSOL_CDMA_INFO_REC, responseCdmaInformationRecords, WAKE_PARTIAL},
+     {RIL_UNSOL_OEM_HOOK_RAW, responseRaw, WAKE_PARTIAL},
+     {RIL_UNSOL_RINGBACK_TONE, responseInts, WAKE_PARTIAL},
+-    {RIL_UNSOL_RESEND_INCALL_MUTE, responseVoid, WAKE_PARTIAL}
++    {RIL_UNSOL_RESEND_INCALL_MUTE, responseVoid, WAKE_PARTIAL},
++
++    /*
++     * Qualcomm/GB vendor RILs may send unsolicited codes 1031-1037.
++     * Keep them here (numeric) to stay compatible with older ril.h headers.
++     */
++    {1031, responseVoid, WAKE_PARTIAL}, /* RIL_UNSOL_VOICE_RADIO_TECH_CHANGED */
++    {1032, responseInts, WAKE_PARTIAL}, /* RIL_UNSOL_TETHERED_MODE_STATE_CHANGED */
++    {1033, responseVoid, WAKE_PARTIAL}, /* RIL_UNSOL_RESPONSE_DATA_NETWORK_STATE_CHANGED */
++    {1034, responseVoid, WAKE_PARTIAL}, /* RIL_UNSOL_CDMA_SUBSCRIPTION_SOURCE_CHANGED */
++    {1035, responseVoid, WAKE_PARTIAL}, /* RIL_UNSOL_CDMA_PRL_CHANGED */
++    {1036, responseVoid, WAKE_PARTIAL}, /* RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED */
++    {1037, responseVoid, WAKE_PARTIAL}  /* RIL_UNSOL_EXIT_EMERGENCY_CALLBACK_MODE */

@@ -1,0 +1,115 @@
+diff --git a/prebuilt/common/etc/apns-conf.xml b/prebuilt/common/etc/apns-conf.xml
+index 185b43e..5429a1f 100644
+--- a/prebuilt/common/etc/apns-conf.xml
++++ b/prebuilt/common/etc/apns-conf.xml
+@@ -1274,6 +1274,8 @@
+   <apn carrier="MTN SA Web" mcc="655" mnc="10" apn="internet" type="default,supl" />
+   <apn carrier="MTN ZA" mcc="655" mnc="10" apn="myMTN" user="mtn" password="mtn" server="*" type="default,supl" />
+   <apn carrier="MTN ZA MMS" mcc="655" mnc="10" apn="myMTN" user="mtnmms" password="mtnmms" mmsc="http://mms.mtn.co.za/mms/wapenc" mmsproxy="196.11.240.241" mmsport="8080" type="mms" />
++  <apn carrier="Claro PE" mcc="716" mnc="10" apn="claro.pe" type="default,supl" />
++  <apn carrier="Claro PE" mcc="716" mnc="20" apn="claro.pe" type="default,supl" />
+   <apn carrier="Movistar AG" mcc="722" mnc="007" apn="internet.unifon" user="wap" password="password" type="default,supl" />
+   <apn carrier="Movistar AG MMS" mcc="722" mnc="007" apn="mms.gprs.unifon.com.ar" user="mms" password="mms" mmsc="http://mms.tmovil.cl/" mmsproxy="200.068.032.239" mmsport="9201" type="mms" />
+   <apn carrier="CTI" mcc="722" mnc="310" apn="internet.ctimovil.com.ar" user="guest" password="guest" type="default,supl" />
+diff --git a/products/AndroidProducts.mk b/products/AndroidProducts.mk
+index d8725a9..bf8182f 100644
+--- a/products/AndroidProducts.mk
++++ b/products/AndroidProducts.mk
+@@ -1,83 +1,3 @@
+ PRODUCT_MAKEFILES := \
+-    $(LOCAL_DIR)/cyanogen_ace.mk \
+-    $(LOCAL_DIR)/cyanogen_anzu.mk \
+-    $(LOCAL_DIR)/cyanogen_blade.mk \
+-    $(LOCAL_DIR)/cyanogen_bravo.mk \
+-    $(LOCAL_DIR)/cyanogen_bravoc.mk \
+-    $(LOCAL_DIR)/cyanogen_buzz.mk \
+-    $(LOCAL_DIR)/cyanogen_captivatemtd.mk \
+-    $(LOCAL_DIR)/cyanogen_click.mk \
+-    $(LOCAL_DIR)/cyanogen_coconut.mk \
+-    $(LOCAL_DIR)/cyanogen_cooper.mk \
+-    $(LOCAL_DIR)/cyanogen_crespo.mk \
+-    $(LOCAL_DIR)/cyanogen_crespo4g.mk \
+-    $(LOCAL_DIR)/cyanogen_desirec.mk \
+-    $(LOCAL_DIR)/cyanogen_dream_sapphire.mk \
+-    $(LOCAL_DIR)/cyanogen_droid2.mk \
+-    $(LOCAL_DIR)/cyanogen_droid2we.mk \
+-    $(LOCAL_DIR)/cyanogen_encore.mk \
+-    $(LOCAL_DIR)/cyanogen_epicmtd.mk \
+-    $(LOCAL_DIR)/cyanogen_espresso.mk \
+-    $(LOCAL_DIR)/cyanogen_es209ra.mk \
+-    $(LOCAL_DIR)/cyanogen_fascinatemtd.mk \
+-    $(LOCAL_DIR)/cyanogen_hallon.mk \
+-    $(LOCAL_DIR)/cyanogen_hero.mk \
+-    $(LOCAL_DIR)/cyanogen_heroc.mk \
+-    $(LOCAL_DIR)/cyanogen_inc.mk \
+-    $(LOCAL_DIR)/cyanogen_iyokan.mk \
+-    $(LOCAL_DIR)/cyanogen_jordan.mk \
+-    $(LOCAL_DIR)/cyanogen_jordan_plus.mk \
+-    $(LOCAL_DIR)/cyanogen_galaxy5.mk \
+-    $(LOCAL_DIR)/cyanogen_galaxys2.mk \
+-    $(LOCAL_DIR)/cyanogen_galaxys2att.mk \
+-    $(LOCAL_DIR)/cyanogen_galaxysbmtd.mk \
+-    $(LOCAL_DIR)/cyanogen_galaxysmtd.mk \
+     $(LOCAL_DIR)/cyanogen_generic.mk \
+-    $(LOCAL_DIR)/cyanogen_glacier.mk \
+-    $(LOCAL_DIR)/cyanogen_legend.mk \
+-    $(LOCAL_DIR)/cyanogen_leo.mk \
+-    $(LOCAL_DIR)/cyanogen_liberty.mk \
+-    $(LOCAL_DIR)/cyanogen_mango.mk \
+-    $(LOCAL_DIR)/cyanogen_mecha.mk \
+-    $(LOCAL_DIR)/cyanogen_mesmerizemtd.mk \
+-    $(LOCAL_DIR)/cyanogen_mimmi.mk \
+-    $(LOCAL_DIR)/cyanogen_morrison.mk \
+-    $(LOCAL_DIR)/cyanogen_motus.mk \
+-    $(LOCAL_DIR)/cyanogen_one.mk \
+-    $(LOCAL_DIR)/cyanogen_olympus.mk \
+-    $(LOCAL_DIR)/cyanogen_p970.mk \
+-    $(LOCAL_DIR)/cyanogen_p990.mk \
+-    $(LOCAL_DIR)/cyanogen_p999.mk \
+-    $(LOCAL_DIR)/cyanogen_passion.mk \
+-    $(LOCAL_DIR)/cyanogen_robyn.mk \
+-    $(LOCAL_DIR)/cyanogen_saga.mk \
+-    $(LOCAL_DIR)/cyanogen_satsuma.mk \
+-    $(LOCAL_DIR)/cyanogen_shadow.mk \
+-    $(LOCAL_DIR)/cyanogen_shakira.mk \
+-    $(LOCAL_DIR)/cyanogen_sholes.mk \
+-    $(LOCAL_DIR)/cyanogen_showcasemtd.mk \
+-    $(LOCAL_DIR)/cyanogen_skate.mk \
+-    $(LOCAL_DIR)/cyanogen_smb_a1002.mk \
+-    $(LOCAL_DIR)/cyanogen_smb_a1004.mk \
+-    $(LOCAL_DIR)/cyanogen_smb_a1011.mk \
+-    $(LOCAL_DIR)/cyanogen_smb_b9701.mk \
+-    $(LOCAL_DIR)/cyanogen_smultron.mk \
+-    $(LOCAL_DIR)/cyanogen_speedy.mk \
+-    $(LOCAL_DIR)/cyanogen_sunfire.mk \
+-    $(LOCAL_DIR)/cyanogen_supersonic.mk \
+-    $(LOCAL_DIR)/cyanogen_tass.mk \
+-    $(LOCAL_DIR)/cyanogen_u8150.mk \
+-    $(LOCAL_DIR)/cyanogen_u8160.mk \
+-    $(LOCAL_DIR)/cyanogen_u8220.mk \
+-    $(LOCAL_DIR)/cyanogen_urushi.mk \
+-    $(LOCAL_DIR)/cyanogen_v9.mk \
+-    $(LOCAL_DIR)/cyanogen_vega.mk \
+-    $(LOCAL_DIR)/cyanogen_vibrantmtd.mk \
+-    $(LOCAL_DIR)/cyanogen_vision.mk \
+-    $(LOCAL_DIR)/cyanogen_vivo.mk \
+-    $(LOCAL_DIR)/cyanogen_vivow.mk \
+-    $(LOCAL_DIR)/cyanogen_z71.mk \
+-    $(LOCAL_DIR)/cyanogen_zeppelin.mk \
+-    $(LOCAL_DIR)/cyanogen_zero.mk \
+-    $(LOCAL_DIR)/cyanogen_zeus.mk \
+-    $(LOCAL_DIR)/cyanogen_zeusc.mk
++    $(LOCAL_DIR)/cyanogen_y210.mk
+diff --git a/products/common.mk b/products/common.mk
+index 17e0b2c..f69d97c 100644
+--- a/products/common.mk
++++ b/products/common.mk
+@@ -87,7 +87,7 @@ PRODUCT_COPY_FILES += \
+ #    vendor/cyanogen/prebuilt/common/etc/init.d/10apps2sd:system/etc/init.d/10apps2sd
+ 
+ PRODUCT_COPY_FILES +=  \
+-    vendor/cyanogen/proprietary/RomManager.apk:system/app/RomManager.apk \
++#    vendor/cyanogen/proprietary/RomManager.apk:system/app/RomManager.apk \
+ 
+ # Enable SIP+VoIP on all targets
+ PRODUCT_COPY_FILES += \
