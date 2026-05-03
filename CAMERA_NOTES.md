@@ -153,6 +153,68 @@ sin delegar `release()` al blob.
 
 Resultado:
 
+## Update 2026-04-12 (bring-up funcional de open + preview)
+
+### Causa raiz del crash de `mediaserver` al abrir
+
+Se observaba:
+
+- `Unable to determine the target type. Camera will not work`
+- `createInstance: startCamera failed!`
+- `FATAL ERROR: could not dlopen liboemcamera.so: (null)`
+- Luego `mediaserver` caia con `SIGSEGV` dentro de `~QualcommCameraHardware/MMCameraDL` (PC=0x0)
+
+Hallazgo clave: `libcamera.y210.so` decide el "target type" leyendo `ro.build.product` y comparando
+con strings como `msm7625a`, `msm7627a`, etc. En nuestro build, `ro.build.product` quedaba fijado
+a `y210` porque `build/tools/buildinfo.sh` lo emite primero en `build.prop` (y al ser `ro.*`,
+los overrides posteriores no surten efecto).
+
+Fix:
+
+- Hacer que `ro.build.product` sea `msm7625a` en el boot.
+  - Solucion permanente: `build/tools/buildinfo.sh` deja de emitir `ro.build.product` (prop obsoleta),
+    permitiendo que el valor del device (`device/huawei/y210/cyanogen_y210.mk`) sea el unico efectivo.
+  - Validacion: `adb shell getprop ro.build.product` debe devolver `msm7625a`.
+
+Con eso, el blob pasa de `startCamera failed` a inicializar parametros (y deja de matar `mediaserver`
+en `HAL_openCameraHardware`).
+
+### Ajustes de wrapper (runtime toggles)
+
+Para estabilizar el preview en este blob legacy:
+
+- `debug.camera.delegate_setparams=1` (habilita delegar `setParameters()` al blob)
+  - sin esto, se observaba `registerBuffers failed -19 / invalid heap` y `startPreview failed`.
+
+Nota: se agrego soporte de `debug.camera.delegate_setparams` en `shouldDelegateSetParameters()`
+para poder probar sin reflashear.
+
+### Parches en Camera.apk (evitar crashes de UI)
+
+Se corrigieron crashes que escondian el estado real del HAL:
+
+- NPE en zoom cuando `mParameters` era `null` (`initializeZoom()`).
+- `RuntimeException: set display orientation failed` (HAL legacy no soporta el API): se atrapa la excepcion.
+- `Invalid rotation=5` al tomar foto: se cuantiza a multiplos de 90 antes de `Parameters.setRotation()`.
+
+### Estado actual (al final de la ronda)
+
+- `open` del HAL y `startPreview` funcionan con:
+  - `ro.build.product=msm7625a`
+  - `debug.camera.delegate_setparams=1`
+- Captura (`takePicture`) aun es inestable:
+  - se observa `Error 100` / `media server died` durante `takePicture(13)` en algunos intentos.
+  - pendiente: capturar tombstone exacto de `mediaserver` durante `takePicture` y aislar si es
+    parametro, formato, heap o callback.
+
+### Comandos de validacion rapida
+
+- Props:
+  - `adb shell getprop ro.build.product`
+  - `adb shell setprop debug.camera.delegate_setparams 1`
+- Logs:
+  - `adb logcat -d | egrep 'QualcommCameraHardware|registerBuffers|invalid heap|takePicture\\(' | tail -n 200`
+
 - el wrapper si suelta su `sp<>` local
 - pero el siguiente `open` vuelve a recibir el mismo `iface`
 - el reopen sigue fallando con `invalid heap -19`

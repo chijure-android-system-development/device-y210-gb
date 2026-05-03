@@ -122,6 +122,13 @@ on boot
     wait /dev/proximity
     chmod 0664 /dev/proximity
 
+    # FM radio device nodes: keep world-accessible like stock/ueventd rules.
+    # Some boots still create them with restrictive perms; fix up here.
+    wait /dev/radio0
+    chmod 0666 /dev/radio0
+    wait /dev/msm_fm
+    chmod 0666 /dev/msm_fm
+
     # ueventd now owns the KGSL permissions; keep only the legacy /dev/kgsl symlink here.
     wait /dev/kgsl-3d0
     symlink /dev/kgsl-3d0 /dev/kgsl
@@ -314,6 +321,10 @@ on property:ro.baseband="msm"
     # start port-bridge
     # Huawei RPC service needed by RIL stack on this device
     start oem_rpc_svc
+    # QMI daemons (qmuxd/qmiproxy) require /data/radio for their local sockets.
+    # Keep this here as well (in addition to post-fs-data) in case the trigger
+    # doesn't run or /data is wiped before this property fires.
+    mkdir /data/radio 0770 radio radio
     # QMI stack helpers needed by Qualcomm RIL (UIM/CAT/data).
     start qmuxd
     start qmiproxy

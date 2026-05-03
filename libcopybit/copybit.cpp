@@ -18,6 +18,7 @@
 #define LOG_TAG "copybit"
 
 #include <cutils/log.h>
+#include <cutils/properties.h>
 
 #include "msm_mdp.h"
 #include <linux/fb.h>
@@ -126,9 +127,13 @@ static int get_format(int format) {
     case HAL_PIXEL_FORMAT_RGBA_8888:     return MDP_RGBA_8888;
     case HAL_PIXEL_FORMAT_BGRA_8888:     return MDP_BGRA_8888;
 //    case HAL_PIXEL_FORMAT_YCrCb_422_SP:  return MDP_Y_CBCR_H2V1;
+    // The Y210 blob claims NV21 (YCrCb_420_SP) but delivers NV12 (CbCr order).
+    // Match stock CM7 libcopybit: map NV21 HAL format -> MDP_Y_CBCR_H2V2 so the
+    // MDP reads the interleaved chroma plane as CbCr (NV12), matching the actual data.
     case HAL_PIXEL_FORMAT_YCrCb_420_SP:  return MDP_Y_CBCR_H2V2;
     case HAL_PIXEL_FORMAT_YCbCr_422_SP:  return MDP_Y_CRCB_H2V1;
-    case HAL_PIXEL_FORMAT_YCbCr_420_SP:  return MDP_Y_CRCB_H2V2;
+    // NV12 (YCbCr) -> CbCr interleaved (Cb in MSB).
+    case HAL_PIXEL_FORMAT_YCbCr_420_SP:  return MDP_Y_CBCR_H2V2;
     }
     return -1;
 }
@@ -426,11 +431,34 @@ static int stretch_copybit(
         struct copybit_image_t const *src,
         struct copybit_rect_t const *dst_rect,
         struct copybit_rect_t const *src_rect,
-        struct copybit_region_t const *region) 
+        struct copybit_region_t const *region)
 {
     struct copybit_context_t* ctx = (struct copybit_context_t*)dev;
     int status = 0;
+
     if (ctx) {
+        // Y210: evitar MDP/copybit para el strip del StatusBar (320x25 en top),
+        // ya que en este dispositivo se observa "ghosting/sobreposición".
+        // Fallback: SurfaceFlinger usará el compositor software para ese frame.
+        char prop[PROPERTY_VALUE_MAX];
+        property_get("debug.copybit.disable_statusbar", prop, "1");
+        const bool disable_statusbar = (prop[0] != '0');
+
+        // MDP3 on MSM7225A produces horizontal-line artifacts when blitting RGB
+        // sources because libagl may pass pixel-width != buffer-stride for small
+        // surfaces (icons, widgets), causing MDP to compute wrong row offsets.
+        // Restrict to YUV-only: video/camera benefit from HW; UI RGB falls back
+        // to pixelflinger which handles stride correctly.
+        switch (src->format) {
+            case HAL_PIXEL_FORMAT_YCrCb_420_SP:
+            case HAL_PIXEL_FORMAT_YCbCr_422_SP:
+            case HAL_PIXEL_FORMAT_YCbCr_420_SP:
+            case HAL_PIXEL_FORMAT_YV12:
+                break;
+            default:
+                return -EINVAL;
+        }
+
         struct {
             uint32_t count;
             struct mdp_blit_req req[12];
@@ -466,6 +494,13 @@ static int stretch_copybit(
         status = 0;
         while ((status == 0) && region->next(region, &clip)) {
             intersect(&clip, &bounds, &clip);
+
+            if (disable_statusbar &&
+                clip.l == 0 && clip.t == 0 &&
+                clip.r == dst->w && clip.b == 25) {
+                return -EINVAL;
+            }
+
             mdp_blit_req* req = &list.req[list.count];
             int flags = 0;
 

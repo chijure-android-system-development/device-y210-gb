@@ -15,4 +15,5 @@
 #
 
 PRODUCT_MAKEFILES := \
-    $(LOCAL_DIR)/device_y210.mk
+    $(LOCAL_DIR)/device_y210.mk \
+    $(LOCAL_DIR)/cyanogen_y210.mk

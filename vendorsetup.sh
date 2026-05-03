@@ -19,8 +19,8 @@
 #
 # In particular, you can add lunch options with the add_lunch_combo
 # function: add_lunch_combo generic-eng
-# Copy y210 product description
-cp device/huawei/y210/cyanogen_y210.mk vendor/cyanogen/products
+# Product makefile lives at vendor/cyanogen/products/cyanogen_y210.mk
+# (kept in-tree for this bring-up). No need to copy at envsetup time.
 
-add_lunch_combo huawei_y210-userdebug
-add_lunch_combo huawei_y210-eng
+add_lunch_combo cyanogen_y210-userdebug
+add_lunch_combo cyanogen_y210-eng

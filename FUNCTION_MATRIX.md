@@ -13,7 +13,7 @@ No reemplaza los notes existentes; los referencia cuando aplica:
 - `device/huawei/y210/AUDIO_NOTES.md`
 - `device/huawei/y210/CAMERA_NOTES.md`
 - `device/huawei/y210/GPS_NOTES.md`
-- `RENDER_NOTES.md`
+- `device/huawei/y210/RENDER_NOTES.md`
 - `device/huawei/y210/LOGGING_NOTES.md`
 
 ## Convención de estado
@@ -45,8 +45,9 @@ Actualizar esta tabla cada vez que un bug se cierre con evidencia.
 
 - Framebuffer / UI visible: **OK**
 - Gralloc/Copybit: **OK** (ruta `gralloc.y210` + `copybit.y210` validada)
-- EGL / Adreno 200 (HW accel): **OK** (ver `RENDER_NOTES.md`)
-- Permisos KGSL persistentes: **Pendiente** (revisar `RENDER_NOTES.md`)
+- EGL / Adreno 200 (HW accel): **OK** (ver `device/huawei/y210/RENDER_NOTES.md`)
+- Ghosting / corrupción de back-buffer: **OK** (fix `fb_setUpdateRect_noop` en gralloc — ver `RENDER_NOTES.md`)
+- Permisos KGSL persistentes: **Pendiente** (revisar `device/huawei/y210/RENDER_NOTES.md`)
 
 ### Input / UI
 
@@ -70,7 +71,16 @@ Actualizar esta tabla cada vez que un bug se cierre con evidencia.
 - Micrófono (grabación): **OK** (ver `device/huawei/y210/AUDIO_NOTES.md`)
 - Llamadas (voz): **Parcial** (downlink OK; uplink/mic requiere validar tras el overlay de `send_mic_mute_to_AudioManager`)
 - Audio por Bluetooth (A2DP/SCO): **Pendiente**
-- Radio FM (app): **No** (crash `UnsatisfiedLinkError: acquireFdNative`; falta stack JNI `android.hardware.fmradio.*`)
+- Radio FM (app): **Pendiente**
+  - Si el app cae con `UnsatisfiedLinkError: acquireFdNative`, falta el JNI `android.hardware.fmradio.*`.
+  - Si el app abre pero falla al habilitar (warnings `VIDIOC_S_CTRL` / se apaga el radio), verificar que existan:
+    - `system/etc/init.qcom.fm.sh`
+    - `system/bin/fm_qsoc_patches` (firmware download/calibración)
+    - `system/bin/fmconfig` (tool de soporte stock)
+    y probar `adb shell setprop ctl.start fm_dl` + `adb shell getprop hw.fm.init` (esperado `1`).
+  - Importante: en stock Y210 `hw.fm.version=67240453` (`0x4020205`). Si se usa `2243` (WCN2243) `fm_qsoc_patches` suele fallar con “Unknown Chip version”.
+  - Si `fm_qsoc_patches` sigue retornando `255`: revisar `/data/app/fm_dld_enable` y `dmesg | grep -i radio-tavarua`. En el Y210 el caso típico es timeout esperando `Interrupt Expected: 0x00010000` + kernel `tavarua_radio: UNKNOWN XFR = 98` / `ERROR STATE` (problema kernel/IRQ, no de los binarios).
+  - Notas: ver `device/huawei/y210/FM_NOTES.md`.
 
 ### Wi‑Fi
 

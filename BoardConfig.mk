@@ -18,6 +18,11 @@ ARCH_ARM_HAVE_TLS_REGISTER := true
 TARGET_BOOTLOADER_BOARD_NAME := y210
 TARGET_OTA_ASSERT_DEVICE := y210,hwy210
 
+# Host build hygiene: disable SREC grammar generation on modern hosts.
+# This avoids building `grxmlcompile` (OpenFst-based) which is not needed
+# for the Y210 bring-up and is incompatible with newer host toolchains.
+BUILD_SREC_GRAMMARS := false
+
 # Audio
 # hardware/msm7k/Android.mk keys off TARGET_PROVIDES_LIBAUDIO to avoid
 # building the generic msm7k audio HAL alongside the device-specific one.

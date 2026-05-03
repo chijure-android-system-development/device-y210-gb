@@ -224,7 +224,7 @@ int AudioHardware::get_sound_endpoints(void)
         for (int cnt = 0; cnt < mNumSndEndpoints; cnt++, ept++) {
             ept->id = cnt;
             ioctl(m7xsnddriverfd, SND_GET_ENDPOINT, ept);
-            LOGV("cnt = %d ept->name = %s ept->id = %d", cnt, ept->name, ept->id);
+            LOGI("snd endpoint: cnt=%d name=%s id=%d", cnt, ept->name, ept->id);
 
 			#define CHECK_FOR(desc) if (!strcmp(ept->name, #desc)) SND_DEVICE_##desc = ept->id;
             CHECK_FOR(CURRENT);
@@ -240,11 +240,41 @@ int AudioHardware::get_sound_endpoints(void)
             CHECK_FOR(TTY_HCO);
             CHECK_FOR(TTY_VCO);
 #ifdef HAVE_FM_RADIO
+            // The MSM7K audio driver exposes multiple FM endpoints with
+            // device-specific names. Map the best-known ones into the generic
+            // FM_HEADSET/FM_SPEAKER slots used by our routing logic.
             CHECK_FOR(FM_SPEAKER);
             CHECK_FOR(FM_HEADSET);
+            if (!strcmp(ept->name, "FM_RADIO_STEREO_HEADSET") ||
+                !strcmp(ept->name, "FM_DIGITAL_STEREO_HEADSET") ||
+                !strcmp(ept->name, "FM_ANALOG_STEREO_HEADSET") ||
+                !strcmp(ept->name, "FM_ANALOG_STEREO_HEADSET_CODEC")) {
+                SND_DEVICE_FM_HEADSET = ept->id;
+            }
+            if (!strcmp(ept->name, "FM_RADIO_SPEAKER_PHONE") ||
+                !strcmp(ept->name, "FM_DIGITAL_SPEAKER_PHONE")) {
+                SND_DEVICE_FM_SPEAKER = ept->id;
+            }
 #endif
             #undef CHECK_FOR
         }
+#ifdef HAVE_FM_RADIO
+        if (SND_DEVICE_FM_HEADSET == -1 || SND_DEVICE_FM_SPEAKER == -1) {
+            LOGW("FM endpoints missing: FM_HEADSET=%d FM_SPEAKER=%d (fallback to HEADSET/SPEAKER)",
+                    SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER);
+            if (SND_DEVICE_FM_HEADSET == -1) {
+                SND_DEVICE_FM_HEADSET = SND_DEVICE_HEADSET;
+            }
+            if (SND_DEVICE_FM_SPEAKER == -1) {
+                SND_DEVICE_FM_SPEAKER = SND_DEVICE_SPEAKER;
+            }
+            LOGI("FM endpoints fallback: FM_HEADSET=%d FM_SPEAKER=%d",
+                    SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER);
+        } else {
+            LOGI("FM endpoints: FM_HEADSET=%d FM_SPEAKER=%d",
+                    SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER);
+        }
+#endif
     }
     return rc;
 }
@@ -1268,13 +1298,15 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
     }
 
 #ifdef HAVE_FM_RADIO
-    key = String8(AudioParameter::keyFmOn);
+    key = String8("fm_on");
     int devices;
     if (param.getInt(key, devices) == NO_ERROR) {
+       LOGI("AudioHardware: fm_on received (devices=0x%x)", devices);
        setFmOnOff(true);
     }
-    key = String8(AudioParameter::keyFmOff);
+    key = String8("fm_off");
     if (param.getInt(key, devices) == NO_ERROR) {
+       LOGI("AudioHardware: fm_off received (devices=0x%x)", devices);
        setFmOnOff(false);
     }
 #endif
@@ -1449,10 +1481,27 @@ status_t AudioHardware::setMasterVolume(float v)
 #ifdef HAVE_FM_RADIO
 status_t AudioHardware::setFmOnOff(bool onoff)
 {
+    // Y210 stock stack expects /dev/msm_fm to be opened while FM is active.
+    // Without that, the FM routing can appear "enabled" (SND_DEVICE_FM_*)
+    // but remain silent.
+    mFmRadioEnabled = onoff;
+    LOGI("setFmOnOff: FM %s", onoff ? "on" : "off");
+
     if (onoff) {
-        mFmRadioEnabled = true;
+        if (fmfd < 0) {
+            fmfd = open("/dev/msm_fm", O_RDWR);
+            if (fmfd < 0) {
+                LOGE("Cannot open FM_DEVICE (/dev/msm_fm) errno: %d", errno);
+            } else {
+                LOGI("Opened FM_DEVICE (/dev/msm_fm) fd=%d", fmfd);
+            }
+        }
     } else {
-        mFmRadioEnabled = false;
+        if (fmfd >= 0) {
+            close(fmfd);
+            fmfd = -1;
+            LOGI("Closed FM_DEVICE (/dev/msm_fm)");
+        }
     }
 
     return NO_ERROR;
@@ -1578,6 +1627,17 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
             }
         }
 
+        // FM RX (Y210): the tuner audio is analog and should be routed through
+        // the regular codec headset/speaker paths (stock-like). Using the
+        // dedicated FM endpoints (when present) can leave FM silent on some
+        // builds.
+        if (mFmRadioEnabled) {
+            LOGI("Routing FM audio to Wired Headset (forced)");
+            new_snd_device = SND_DEVICE_HEADSET;
+            new_post_proc_feature_mask = (EQ_ENABLE | RX_IIR_ENABLE);
+            new_post_proc_feature_mask &= (MBADRC_DISABLE | ADRC_DISABLE);
+        } else
+
         if ((mTtyMode != TTY_OFF) && (mMode == AudioSystem::MODE_IN_CALL) &&
                 (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET)) {
             if (mTtyMode == TTY_FULL) {
@@ -1606,8 +1666,8 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
         } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
             if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                 if (mFmRadioEnabled) {
-                    LOGI("Routing audio to FM Speakerphone");
-                    new_snd_device = SND_DEVICE_FM_SPEAKER;
+                    LOGI("Routing FM audio to Speakerphone");
+                    new_snd_device = SND_DEVICE_SPEAKER;
                     new_post_proc_feature_mask = (EQ_ENABLE | RX_IIR_ENABLE);
                     new_post_proc_feature_mask &= (MBADRC_DISABLE | ADRC_DISABLE);
                 } else {
@@ -1617,8 +1677,8 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
                 }
             } else {
                 if (mFmRadioEnabled) {
-                    LOGI("Routing audio to FM Headset");
-                    new_snd_device = SND_DEVICE_FM_HEADSET;
+                    LOGI("Routing FM audio to Wired Headset");
+                    new_snd_device = SND_DEVICE_HEADSET;
                     new_post_proc_feature_mask = (EQ_ENABLE | RX_IIR_ENABLE);
                     new_post_proc_feature_mask &= (MBADRC_DISABLE | ADRC_DISABLE);
                 } else {
@@ -1630,7 +1690,7 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
         } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADSET) {
             if (mFmRadioEnabled) {
                 LOGI("Routing FM audio to Wired Headset");
-                new_snd_device = SND_DEVICE_FM_HEADSET;
+                new_snd_device = SND_DEVICE_HEADSET;
                 new_post_proc_feature_mask = (EQ_ENABLE | RX_IIR_ENABLE);
                 new_post_proc_feature_mask &= (MBADRC_DISABLE | ADRC_DISABLE);
             } else {
@@ -1640,8 +1700,8 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
             }
         } else if (outputDevices & AudioSystem::DEVICE_OUT_WIRED_HEADPHONE) {
             if (mFmRadioEnabled) {
-                LOGI("Routing audio to FM Headset");
-                new_snd_device = SND_DEVICE_FM_HEADSET;
+                LOGI("Routing FM audio to Wired Headset");
+                new_snd_device = SND_DEVICE_HEADSET;
                 new_post_proc_feature_mask = (EQ_ENABLE | RX_IIR_ENABLE);
                 new_post_proc_feature_mask &= (MBADRC_DISABLE | ADRC_DISABLE);
             } else {
@@ -1651,8 +1711,8 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
             }
         } else if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
             if (mFmRadioEnabled) {
-                LOGI("Routing audio to FM Speakerphone");
-                new_snd_device = SND_DEVICE_FM_SPEAKER;
+                LOGI("Routing FM audio to Speakerphone");
+                new_snd_device = SND_DEVICE_SPEAKER;
                 new_post_proc_feature_mask = (EQ_ENABLE | RX_IIR_ENABLE);
                 new_post_proc_feature_mask &= (MBADRC_DISABLE | ADRC_DISABLE);
             } else {

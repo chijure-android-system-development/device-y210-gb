@@ -31,7 +31,8 @@ PRODUCT_PACKAGES += \
 # Other
 PRODUCT_PACKAGES += \
     lights.y210 \
-    gps.y210
+    gps.y210 \
+    fminit
 
 ifeq ($(TARGET_PREBUILT_KERNEL),)
 	LOCAL_KERNEL := device/huawei/y210/kernel
@@ -60,16 +61,22 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/init.qcom.sh:root/init.qcom.sh \
     device/huawei/y210/prebuilt/init.huawei.usb.rc:root/init.huawei.usb.rc \
     device/huawei/y210/prebuilt/system/etc/init.qcom.bt.sh:system/etc/init.qcom.bt.sh \
+    device/huawei/y210/prebuilt/system/etc/init.qcom.fm.sh:system/etc/init.qcom.fm.sh \
     device/huawei/y210/prebuilt/system/etc/AutoVolumeControl.txt:system/etc/AutoVolumeControl.txt \
     device/huawei/y210/prebuilt/system/etc/AudioFilter.csv:system/etc/AudioFilter.csv \
     device/huawei/y210/prebuilt/system/etc/wifi/wpa_supplicant.conf:system/etc/wifi/wpa_supplicant.conf \
     device/huawei/y210/prebuilt/system/etc/wifi/hostapd.conf:system/etc/wifi/hostapd.conf \
-    device/huawei/y210/prebuilt/system/bin/hostapd:system/bin/hostapd \
-    device/huawei/y210/prebuilt/system/etc/media_profiles.xml:system/etc/media_profiles.xml \
-    device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
-    device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
-    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog \
-    device/huawei/y210/prebuilt/system/app/ProjectMenuAct.apk:system/app/ProjectMenuAct.apk \
+	    device/huawei/y210/prebuilt/system/bin/hostapd:system/bin/hostapd \
+	    device/huawei/y210/prebuilt/system/bin/fm_qsoc_patches:system/bin/fm_qsoc_patches \
+	    device/huawei/y210/prebuilt/system/bin/fmconfig:system/bin/fmconfig \
+	    device/huawei/y210/prebuilt/system/bin/ds_fmc_appd:system/bin/ds_fmc_appd \
+	    device/huawei/y210/prebuilt/system/lib/libfm_hal.so:system/lib/libfm_hal.so \
+	    device/huawei/y210/prebuilt/system/lib/hw/libqcomfm_if.so:system/lib/hw/libqcomfm_if.so \
+	    device/huawei/y210/prebuilt/system/etc/media_profiles.xml:system/etc/media_profiles.xml \
+	    device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
+	    device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
+	    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog \
+	    device/huawei/y210/prebuilt/system/app/ProjectMenuAct.apk:system/app/ProjectMenuAct.apk \
     device/huawei/y210/prebuilt/system/app/ProjectMenuAct.odex:system/app/ProjectMenuAct.odex \
     device/huawei/y210/prebuilt/system/lib/libprojectmenu.so:system/lib/libprojectmenu.so
 

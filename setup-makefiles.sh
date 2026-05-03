@@ -1,7 +1,9 @@
 #!/bin/sh
 
 # Regenerate the small vendor stubs for the Huawei Y210 tree.
-# The blob list itself is kept in vendor/huawei/y210/y210-vendor-blobs.mk.
+#
+# Note: the proprietary blob list is maintained in
+# `vendor/huawei/y210/y210-vendor-blobs.mk` (generated elsewhere).
 
 set -eu
 
@@ -17,8 +19,13 @@ $(call inherit-product, vendor/huawei/y210/y210-vendor-blobs.mk)
 EOF
 
 cat > "$OUTDIR/BoardConfigVendor.mk" <<'EOF'
-# Auto-generated BoardConfigVendor for y210
-USE_CAMERA_STUB := false
+# Intentionally empty.
+# Vendor-specific board overrides are not needed for Y210 right now.
+EOF
+
+cat > "$OUTDIR/AndroidBoardVendor.mk" <<'EOF'
+# Intentionally empty.
+# Vendor-specific board overrides are not needed for Y210 right now.
 EOF
 
 cat > "$OUTDIR/Android.mk" <<'EOF'

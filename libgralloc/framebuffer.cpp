@@ -118,13 +118,25 @@ static int fb_setUpdateRect(struct framebuffer_device_t* dev,
 {
     if (((w|h) <= 0) || ((l|t)<0))
         return -EINVAL;
-        
+
     fb_context_t* ctx = (fb_context_t*)dev;
     private_module_t* m = reinterpret_cast<private_module_t*>(
             dev->common.module);
     m->info.reserved[0] = 0x54445055; // "UPDT";
     m->info.reserved[1] = (uint16_t)l | ((uint32_t)t << 16);
     m->info.reserved[2] = (uint16_t)(l+w) | ((uint32_t)(t+h) << 16);
+    return 0;
+}
+
+// No-op variant: non-NULL pointer makes FramebufferNativeWindow::isUpdateOnDemand()
+// return true, which sets DisplayHardware::PARTIAL_UPDATES and clears SWAP_RECTANGLE.
+// Without this, Adreno 200 EGL advertises EGL_ANDROID_swap_rectangle and SF sets
+// SWAP_RECTANGLE instead — causing partial dirty-region redraws over uninitialized
+// back-buffer content (the "ghosting" corruption on Y210).
+// Does NOT write reserved[0]="UPDT" to avoid triggering the MSM kernel partial-scan path.
+static int fb_setUpdateRect_noop(struct framebuffer_device_t* /*dev*/,
+        int /*l*/, int /*t*/, int /*w*/, int /*h*/)
+{
     return 0;
 }
 
@@ -777,9 +789,12 @@ int fb_device_open(hw_module_t const* module, const char* name,
             const_cast<int&>(dev->device.minSwapInterval) = private_module_t::PRIV_MIN_SWAP_INTERVAL;
             const_cast<int&>(dev->device.maxSwapInterval) = private_module_t::PRIV_MAX_SWAP_INTERVAL;
 
-            // Disable update-on-demand on this panel: the partial-update path
-            // is known to leave stale pixels around the status bar on Y210.
-            dev->device.setUpdateRect = 0;
+            // Use a no-op setUpdateRect so isUpdateOnDemand() returns true.
+            // This sets PARTIAL_UPDATES in DisplayHardware, which clears SWAP_RECTANGLE,
+            // forcing SurfaceFlinger to do full-screen redraws every frame.
+            // Using a NULL pointer here leaves SWAP_RECTANGLE active (Adreno EGL
+            // advertises EGL_ANDROID_swap_rectangle), causing the ghosting corruption.
+            dev->device.setUpdateRect = fb_setUpdateRect_noop;
 
             *device = &dev->device.common;
         }

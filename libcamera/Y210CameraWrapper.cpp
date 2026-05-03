@@ -24,6 +24,7 @@ static OpenCamFunc gOpenCameraHardware = NULL;
 static GetCamInfoFunc gGetCameraInfo = NULL;
 static GetNumCamerasFunc gGetNumberOfCameras = NULL;
 static void *gLibHandle = NULL;
+static void *gOemCameraHandle = NULL;
 
 static void ensureY210CameraLibOpened();
 
@@ -79,7 +80,17 @@ static bool shouldDelegateRelease()
 static bool shouldDelegateSetParameters()
 {
     char value[PROPERTY_VALUE_MAX];
-    property_get("persist.camera.delegate_setparams", value, "0");
+    property_get("debug.camera.delegate_setparams", value, "");
+    if (value[0] != '\0') {
+        return strcmp(value, "0") != 0;
+    }
+
+    property_get("camera.delegate_setparams", value, "");
+    if (value[0] != '\0') {
+        return strcmp(value, "0") != 0;
+    }
+
+    property_get("persist.camera.delegate_setparams", value, "1");
     return strcmp(value, "0") != 0;
 }
 
@@ -157,6 +168,16 @@ static void ensureY210CameraLibOpened()
         return;
     }
 
+    // The proprietary QualcommCameraHardware in libcamera.y210.so attempts to dlopen
+    // liboemcamera.so during createInstance(). On this stack we observe dlopen failures
+    // with an empty dlerror(), leading to a broken construction and a crash during
+    // cleanup. Preload the OEM library globally so the blob sees it as already loaded.
+    gOemCameraHandle = ::dlopen("liboemcamera.so", RTLD_NOW | RTLD_GLOBAL);
+    if (gOemCameraHandle == NULL) {
+        const char *error = dlerror();
+        LOGE("dlopen(liboemcamera.so) failed: %s", error ? error : "(null)");
+    }
+
     gOpenCameraHardware = reinterpret_cast<OpenCamFunc>(
             ::dlsym(gLibHandle, "HAL_openCameraHardware"));
     gGetCameraInfo = reinterpret_cast<GetCamInfoFunc>(
@@ -169,6 +190,14 @@ static void ensureY210CameraLibOpened()
         LOGE("Failed to resolve camera HAL entry points");
     } else {
         LOGI("Resolved camera HAL entry points from libcamera.y210.so");
+        // The blob's startCamera() reads a global targetType set by storeTargetType(),
+        // which is called from getCameraInfo(). Android 2.3 CameraService does not
+        // guarantee getCameraInfo is called before the first HAL_openCameraHardware,
+        // so we prime it here to avoid the "Unable to determine target type" failure.
+        struct CameraInfo info;
+        gGetCameraInfo(0, &info);
+        LOGI("Target type primed via getCameraInfo (facing=%d orientation=%d)",
+                info.facing, info.orientation);
     }
 }
 
@@ -348,8 +377,11 @@ CameraParameters Y210CameraWrapper::seedParameters() const
     params.set(CameraParameters::KEY_ANTIBANDING,
             CameraParameters::ANTIBANDING_AUTO);
     params.set(CameraParameters::KEY_ROTATION, "0");
+    // 432x320 is NOT in the blob's internal valid-preview-size list;
+    // the blob rejects it with "Invalid preview size requested: 432x320"
+    // and falls back to 640x480, causing a buffer-size mismatch in registerBuffers.
     params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-            "640x480,480x320,432x320,352x288,240x160,176x144");
+            "640x480,480x320,352x288,240x160,176x144");
     params.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
             "640x480,512x384,320x240");
     params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES, "15");
@@ -448,6 +480,11 @@ CameraParameters Y210CameraWrapper::sanitizeParameters(
 CameraParameters Y210CameraWrapper::buildDelegatedParameters(
         const CameraParameters& in) const
 {
+    // Start from seedParameters() so capability keys (preview-size-values, etc.)
+    // are present in the delegated set.  The blob validates KEY_PREVIEW_SIZE against
+    // KEY_SUPPORTED_PREVIEW_SIZES in the same setParameters call; without the latter
+    // it rejects the entire call before applying the size, leaving the blob's internal
+    // preview heap at its previous size and causing registerBuffers ENODEV.
     CameraParameters out(seedParameters());
     static const char* kKeys[] = {
         CameraParameters::KEY_PREVIEW_SIZE,
@@ -456,6 +493,8 @@ CameraParameters Y210CameraWrapper::buildDelegatedParameters(
         CameraParameters::KEY_PICTURE_FORMAT,
         CameraParameters::KEY_JPEG_QUALITY,
         CameraParameters::KEY_ROTATION,
+        CameraParameters::KEY_WHITE_BALANCE,
+        CameraParameters::KEY_FOCUS_MODE,
     };
 
     for (size_t i = 0; i < sizeof(kKeys) / sizeof(kKeys[0]); ++i) {
@@ -597,15 +636,30 @@ void Y210CameraWrapper::encodeData()
 
 bool Y210CameraWrapper::useOverlay()
 {
-    // The proprietary blob crashes while probing overlay buffer metadata via
-    // getBufferInfo() during CameraService client construction. Force the
-    // non-overlay preview path on CM7.
+    // Default to non-overlay: the proprietary blob has been observed crashing
+    // while probing overlay metadata on some lifecycles. Keep an explicit
+    // runtime escape hatch for bring-up/testing.
+    char value[PROPERTY_VALUE_MAX];
+    property_get("debug.camera.use_overlay", value, "0");
+    if (strcmp(value, "1") == 0) {
+        return true;
+    }
     return false;
 }
 
 status_t Y210CameraWrapper::setOverlay(const sp<Overlay> &overlay)
 {
-    return INVALID_OPERATION;
+    if (!isUsable()) {
+        return INVALID_OPERATION;
+    }
+
+    char value[PROPERTY_VALUE_MAX];
+    property_get("debug.camera.use_overlay", value, "0");
+    if (strcmp(value, "1") != 0) {
+        return INVALID_OPERATION;
+    }
+
+    return mLibInterface->setOverlay(overlay);
 }
 
 void Y210CameraWrapper::stopPreview()
@@ -764,11 +818,45 @@ status_t Y210CameraWrapper::setParameters(const CameraParameters& params)
     }
 
     CameraParameters delegated = buildDelegatedParameters(safe);
+
+    // The blob's ISP does not support 432x320 ("Invalid preview size requested: 432x320");
+    // it rejects the entire setParameters call and stays at 640x480, causing a buffer-size
+    // mismatch when registerBuffers is called with 432x320 surface buffers.
+    // Remap 432x320 -> 480x320 (a standard size the blob accepts) both in the delegated
+    // params sent to the blob AND in the cache returned by getParameters(), so the camera
+    // service allocates matching-size buffers for registerBuffers.
+    int delegatedPrevW = 0, delegatedPrevH = 0;
+    delegated.getPreviewSize(&delegatedPrevW, &delegatedPrevH);
+    bool remappedPreviewSize = false;
+    if (delegatedPrevW == 432 && delegatedPrevH == 320) {
+        delegated.setPreviewSize(480, 320);
+        remappedPreviewSize = true;
+        LOGI("Y210WRAP: setParameters remapping preview 432x320->480x320 (blob rejects 432x320)");
+    }
+
     logParameterSummary("setParameters delegate-pre", delegated);
     LOGI("Y210WRAP: setParameters delegate-flat=%s", delegated.flatten().string());
-    status_t rc = mLibInterface->setParameters(delegated);
+    // The Y210 blob's QualcommCameraHardware vtable has 2 extra virtual methods inserted
+    // between cancelAutoFocus (slot 18) and takePicture (slot 21 in blob vs slot 19 in CM7),
+    // shifting setParameters from CM7's vtable slot 21 to blob's slot 23.
+    // Calling through mLibInterface->setParameters() dispatches to blob's takePicture(sp<ISurface>&)
+    // at slot 21 -> SIGSEGV.  We bypass the C++ vtable and call the correct slot directly.
+    typedef status_t (*BlobSetParamFn)(void*, const CameraParameters&);
+    void** vptr = *reinterpret_cast<void***>(mLibInterface.get());
+    BlobSetParamFn blobSetParams = reinterpret_cast<BlobSetParamFn>(vptr[23]);
+    LOGI("Y210WRAP: setParameters calling blob slot 23 directly (vtable offset 0x5c)");
+    status_t rc = blobSetParams(mLibInterface.get(), delegated);
     LOGI("Y210WRAP: setParameters delegate-post rc=%d previewRunning=%d recordingRunning=%d",
             rc, mPreviewRunning, mRecordingRunning);
+
+    // If we remapped the preview size, update the cache regardless of blob rc so that
+    // getParameters() returns the actual size the blob was configured for.  This ensures
+    // CameraService allocates matching-size surface buffers for registerBuffers.
+    if (remappedPreviewSize) {
+        mLastGoodParameters.setPreviewSize(480, 320);
+        LOGI("Y210WRAP: setParameters updated cache preview to 480x320 to match blob");
+    }
+
     if (rc != NO_ERROR) {
         const char* suspect = findFirstPresentParameterKey(
                 patched, kBlockedKeys, sizeof(kBlockedKeys) / sizeof(kBlockedKeys[0]));

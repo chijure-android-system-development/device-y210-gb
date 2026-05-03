@@ -25,9 +25,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <linux/ashmem.h>
 #include <cutils/log.h>
 #include <cutils/atomic.h>
 #include <cutils/ashmem.h>
+#include <cutils/properties.h>
 
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
@@ -39,6 +41,7 @@
 
 // we need this for now because pmem cannot mmap at an offset
 #define PMEM_HACK   1
+#define ASHMEM_CACHE_CLEAN_RANGE        _IO(__ASHMEMIOC, 12)
 
 /* desktop Linux needs a little help with gettid() */
 #if defined(ARCH_X86) && !defined(HAVE_ANDROID_OS)
@@ -294,11 +297,10 @@ int gralloc_lock(gralloc_module_t const* module,
         hnd->writeOwner = gettid();
     }
 
-    // Only physically contiguous buffers need explicit cache maintenance here.
-    if ((usage & GRALLOC_USAGE_SW_WRITE_MASK) &&
-            !(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER) &&
-            ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) ||
-             (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP))) {
+    // If requesting SW write for non-framebuffer handles, flag for flushing
+    // at unlock. This matches legacy msm7x27 gralloc behavior (pmem/ashmem).
+    if ((usage & (GRALLOC_USAGE_SW_WRITE_MASK | GRALLOC_USAGE_HW_RENDER)) &&
+            !(hnd->flags & private_handle_t::PRIV_FLAGS_FRAMEBUFFER)) {
         hnd->flags |= private_handle_t::PRIV_FLAGS_NEEDS_FLUSH;
     }
 
@@ -336,12 +338,20 @@ int gralloc_unlock(gralloc_module_t const* module,
         if ((hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM) ||
                 (hnd->flags & private_handle_t::PRIV_FLAGS_USES_PMEM_ADSP)) {
             err = sync_pmem_buffer(hnd);
+        } else if (hnd->flags & private_handle_t::PRIV_FLAGS_USES_ASHMEM) {
+            err = ioctl(hnd->fd, ASHMEM_CACHE_CLEAN_RANGE, NULL);
         } else {
             err = 0;
         }
 
         LOGE_IF(err < 0, "cannot flush handle %p (offs=%x len=%x)\n",
                 hnd, hnd->offset, hnd->size);
+        char dbg[PROPERTY_VALUE_MAX];
+        property_get("debug.gralloc.flushlog", dbg, "0");
+        if (dbg[0] == '1' && hnd->size <= (64*1024)) {
+            LOGE("gralloc: flush size=%d flags=0x%x fd=%d err=%d",
+                 hnd->size, hnd->flags, hnd->fd, err);
+        }
         hnd->flags &= ~private_handle_t::PRIV_FLAGS_NEEDS_FLUSH;
     }
 

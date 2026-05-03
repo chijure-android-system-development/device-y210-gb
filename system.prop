@@ -133,13 +133,19 @@ ro.fm.mulinst.recording.support=false
 ro.config.KeyPassToUser=true
 #System property for msm 
 #
-ro.hw_plat=7x25a
 #/* < DTS2011093001538 yangyuan 20110930 begin */
 #/*<DTS2011121604452 yangyuan 20111217 begin */
 ro.config.fm_type=libqcomfm_if
 #/* DTS2011121604452 yangyuan 20111217 end >*/
 #/* DTS2011093001538 yangyuan 20110930 end > */
 #DTS2010060300084 xiongshiyi 00165767 20100603 end
+
+# FM init (init.qcom.fm.sh). On stock Y210 `hw.fm.version` is `67240453`
+# (0x4020205) and `fm_qsoc_patches` succeeds; using `2243` causes
+# "Unknown Chip version" and fw download failure.
+hw.fm.version=67240453
+hw.fm.mode=normal
+hw.fm.isAnalog=false
 
 # Begin:DTS2010071300747 add Qualifier opt added by h00152727 20100713
 ro.config.hw_opta=
@@ -376,3 +382,16 @@ ro.confg.hw_appsbootversion=Y210-0151V100R001C40B855_APPSBOOT
 ro.confg.hw_appversion=Y210-0151V100R001C40B855_KERNEL
 ro.confg.hw_appfsversion=Y210-0151V100R001C40B855_SYSIMG
 # AW8D00124 Modified by zhangshuai, 2010/05/27 END 
+
+#
+# Camera bring-up (Huawei/Qualcomm legacy blob)
+#
+# The stock camera blob expects a second "camera mode" argument and fails
+# initialization when it receives garbage. Keep the mode fixed to the value
+# that brings up preview on this device.
+persist.camera.mode=1
+#
+# Delegate the minimal parameter subset (preview/picture size+format, rotation)
+# into the vendor HAL. Without this, preview commonly fails with
+# `registerBuffers failed -19 / invalid heap`.
+persist.camera.delegate_setparams=1
