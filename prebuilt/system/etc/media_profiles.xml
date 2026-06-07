@@ -24,7 +24,7 @@
                          AudioDecoderCap)>
 <!ELEMENT CamcorderProfiles (EncoderProfile+, ImageEncoding+, ImageDecoding, Camera)>
 <!ELEMENT EncoderProfile (Video, Audio)>
-<!ATTLIST EncoderProfile quality (high|low) #REQUIRED>
+<!ATTLIST EncoderProfile quality (high|low|hd|wide) #REQUIRED>
 <!ATTLIST EncoderProfile fileFormat (mp4|3gp) #REQUIRED>
 <!ATTLIST EncoderProfile duration (30|60) #REQUIRED>
 <!ELEMENT Video EMPTY>
@@ -104,7 +104,34 @@
                    bitRate="12200"
                    sampleRate="8000"
                    channels="1" />
+        </EncoderProfile>
 
+        <!-- hd = max video resolution for mt9d113 (352x288) -->
+        <EncoderProfile quality="hd" fileFormat="mp4" duration="60">
+            <Video codec="h263"
+                   bitRate="512000"
+                   width="352"
+                   height="288"
+                   frameRate="15" />
+
+            <Audio codec="amrnb"
+                   bitRate="12200"
+                   sampleRate="8000"
+                   channels="1" />
+        </EncoderProfile>
+
+        <!-- wide = intermediate resolution (320x240) -->
+        <EncoderProfile quality="wide" fileFormat="3gp" duration="30">
+            <Video codec="h263"
+                   bitRate="384000"
+                   width="320"
+                   height="240"
+                   frameRate="15" />
+
+            <Audio codec="amrnb"
+                   bitRate="12200"
+                   sampleRate="8000"
+                   channels="1" />
         </EncoderProfile>
 
         <ImageEncoding quality="90" />
@@ -141,7 +168,32 @@
                    bitRate="12200"
                    sampleRate="8000"
                    channels="1" />
+        </EncoderProfile>
 
+        <EncoderProfile quality="hd" fileFormat="mp4" duration="60">
+            <Video codec="h263"
+                   bitRate="512000"
+                   width="352"
+                   height="288"
+                   frameRate="15" />
+
+            <Audio codec="amrnb"
+                   bitRate="12200"
+                   sampleRate="8000"
+                   channels="1" />
+        </EncoderProfile>
+
+        <EncoderProfile quality="wide" fileFormat="3gp" duration="30">
+            <Video codec="h263"
+                   bitRate="384000"
+                   width="320"
+                   height="240"
+                   frameRate="15" />
+
+            <Audio codec="amrnb"
+                   bitRate="12200"
+                   sampleRate="8000"
+                   channels="1" />
         </EncoderProfile>
 
         <ImageEncoding quality="90" />
