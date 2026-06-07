@@ -208,6 +208,12 @@ on boot
 # /*< DTS2011111900490 zhangyancun 201119 begin */
 # /* modify the open file maximum to 2048 */
     setrlimit 7 2048 2048
+
+# Use interactive governor for UI responsiveness.
+# init.huawei.rc sets ondemand (up_threshold=95, sampling_rate=50ms)
+# which keeps the CPU at 320 MHz during UI interactions.
+# interactive scales up immediately on any request.
+    write /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor interactive
 # /* DTS2011111900490 zhangyancun 20111119 end >*/
 
 # /*< DTS2011062406362 zhangyancun 2010110629 begin */
