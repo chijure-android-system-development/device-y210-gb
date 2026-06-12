@@ -79,7 +79,14 @@ PRODUCT_COPY_FILES += \
 	    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog \
 	    device/huawei/y210/prebuilt/system/app/ProjectMenuAct.apk:system/app/ProjectMenuAct.apk \
     device/huawei/y210/prebuilt/system/app/ProjectMenuAct.odex:system/app/ProjectMenuAct.odex \
-    device/huawei/y210/prebuilt/system/lib/libprojectmenu.so:system/lib/libprojectmenu.so
+    device/huawei/y210/prebuilt/system/lib/libprojectmenu.so:system/lib/libprojectmenu.so \
+    device/huawei/y210/prebuilt/system/usr/keychars/7x27a_kp.kcm:system/usr/keychars/7x27a_kp.kcm \
+    device/huawei/y210/prebuilt/system/usr/keychars/7x27a_kp.kcm:system/usr/keychars/default_keypad.kcm \
+    device/huawei/y210/prebuilt/system/usr/keylayout/7x27a_kp.kl:system/usr/keylayout/7x27a_kp.kl \
+    device/huawei/y210/prebuilt/system/usr/keylayout/surf_keypad.kl:system/usr/keylayout/surf_keypad.kl \
+    device/huawei/y210/prebuilt/system/usr/keylayout/Generic.kl:system/usr/keylayout/Generic.kl \
+    device/huawei/y210/prebuilt/system/usr/keylayout/7k_handset.kl:system/usr/keylayout/7k_handset.kl \
+    device/huawei/y210/prebuilt/system/usr/keylayout/AVRCP.kl:system/usr/keylayout/AVRCP.kl
 
 # Wi-Fi firmware and module (Qualcomm/Atheros)
 PRODUCT_COPY_FILES += \

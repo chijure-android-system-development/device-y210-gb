@@ -232,6 +232,8 @@ on boot
     chown system system /sys/devices/platform/msm_hsusb/gadget/fixusb
 # /* DTS2011110804704 zhangyancun 20111109 end >*/
 
+    setprop net.tcp.buffersize.hsdpa   4094,87380,262144,4096,16384,262144
+    setprop net.tcp.buffersize.hspa    4094,87380,262144,4096,16384,262144
     setprop net.tcp.buffersize.lte     4094,87380,1220608,4096,16384,1220608
     setprop net.tcp.buffersize.evdo_b  4094,87380,262144,4096,16384,262144
 
@@ -242,15 +244,15 @@ on boot
 
 #/* < DTS2011082001050  liujinggang 20110822 begin */
 #/* we change the following lines to change the accel and  compass_aot mode to pass the AT&T test
-chmod 0664 /dev/accel
+    chmod 0664 /dev/accel
     chown system system /dev/accel
-chmod 0664 /dev/compass_aot
+    chmod 0664 /dev/compass_aot
     chown system system /dev/compass_aot
 #/* < DTS2012011003827 zhangmin 20120110 begin */
-chmod 0664 /dev/akm8975_dev
-chmod 0664 /dev/compass_dev
+    chmod 0664 /dev/akm8975_dev
+    chmod 0664 /dev/compass_dev
 #/* DTS2012011003827 zhangmin 20120110 end > */
-chmod 0664 /dev/gyro
+    chmod 0664 /dev/gyro
 #/* DTS2011082001050  liujinggang 20110822 end > */
 
 

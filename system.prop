@@ -315,8 +315,8 @@ ro.persiandigit.disabled=false
 #DTS2012020702954  leiwei 20120207 begin
 ro.config.hw_gcf_mms=true
 #DTS2012020702954  leiwei 20120207 end
-ro.config.notification_sound=Glory.ogg
-ro.config.ringtone=Huawei_Tune.ogg
+ro.config.notification_sound=Polaris.ogg
+ro.config.ringtone=Ring_Classic_02.ogg
 # DTS2012020708159 lishilong 20120214 begin
 ro.config.location=1
 # DTS2012020708159 lishilong 20120214 end
