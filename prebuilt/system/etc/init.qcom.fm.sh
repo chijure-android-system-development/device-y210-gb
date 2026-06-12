@@ -77,13 +77,14 @@ esac
 # On Y210 we've seen fm_qsoc_patches fail early with
 # "I2C slave addr:0x2a not connected" unless /dev/radio0 is opened first
 # (this brings the chip out of low-power/reset).
-HAVE_RADIO_FD=0
 if [ -e /dev/radio0 ]; then
     if exec 3</dev/radio0; then
-        HAVE_RADIO_FD=1
         logi "Opened /dev/radio0 to power FM"
         # Give the driver a moment to bring the chip up.
         sleep 1
+        # Close before fm_qsoc_patches so it can open the device exclusively.
+        exec 3<&-
+        logi "Closed /dev/radio0, fm_qsoc_patches can proceed"
     else
         logi "Failed to open /dev/radio0 to power FM"
     fi
@@ -111,10 +112,6 @@ case $mode in
 esac
 
 exit_code_fm_qsoc_patches=$?
-
-if [ "$HAVE_RADIO_FD" = "1" ]; then
-    exec 3<&-
-fi
 
 case $exit_code_fm_qsoc_patches in
    0)

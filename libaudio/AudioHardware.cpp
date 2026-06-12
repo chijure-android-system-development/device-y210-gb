@@ -241,19 +241,45 @@ int AudioHardware::get_sound_endpoints(void)
             CHECK_FOR(TTY_HCO);
             CHECK_FOR(TTY_VCO);
 #ifdef HAVE_FM_RADIO
-            // The MSM7K audio driver exposes multiple FM endpoints with
-            // device-specific names. Map the best-known ones into the generic
-            // FM_HEADSET/FM_SPEAKER slots used by our routing logic.
+            // The MSM7K audio driver exposes multiple FM endpoints.
+            // Y210 uses WCN2243 with digital I2S FM audio (hw.fm.isAnalog=false).
+            // Prefer FM_DIGITAL_STEREO_HEADSET; only fall back to analog/radio
+            // endpoints if the digital one isn't found.
             CHECK_FOR(FM_SPEAKER);
             CHECK_FOR(FM_HEADSET);
-            if (!strcmp(ept->name, "FM_RADIO_STEREO_HEADSET") ||
-                !strcmp(ept->name, "FM_DIGITAL_STEREO_HEADSET") ||
-                !strcmp(ept->name, "FM_ANALOG_STEREO_HEADSET") ||
-                !strcmp(ept->name, "FM_ANALOG_STEREO_HEADSET_CODEC")) {
-                SND_DEVICE_FM_HEADSET = ept->id;
+            {
+                char fmAnalog[PROPERTY_VALUE_MAX] = "false";
+                property_get("hw.fm.isAnalog", fmAnalog, "false");
+                bool isAnalog = (strcmp(fmAnalog, "true") == 0);
+                if (isAnalog) {
+                    if (!strcmp(ept->name, "FM_ANALOG_STEREO_HEADSET_CODEC") ||
+                        !strcmp(ept->name, "FM_ANALOG_STEREO_HEADSET") ||
+                        !strcmp(ept->name, "FM_RADIO_STEREO_HEADSET")) {
+                        SND_DEVICE_FM_HEADSET = ept->id;
+                    }
+                } else {
+                    // Digital FM (I2S via WCN2243): stock libaudio uses
+                    // FM_RADIO_STEREO_HEADSET (AUX_PGA path, id=29) for
+                    // "Routing RADIO FM to Wired Headset".  FM_DIGITAL_STEREO_HEADSET
+                    // (id=26) requires the QDSP5v2 AFE FM path which needs additional
+                    // kernel-side wiring that isn't available here.
+                    if (!strcmp(ept->name, "FM_DIGITAL_STEREO_HEADSET") ||
+                        !strcmp(ept->name, "FM_ANALOG_STEREO_HEADSET") ||
+                        !strcmp(ept->name, "FM_ANALOG_STEREO_HEADSET_CODEC")) {
+                        if (SND_DEVICE_FM_HEADSET == -1)
+                            SND_DEVICE_FM_HEADSET = ept->id;
+                    }
+                    if (!strcmp(ept->name, "FM_RADIO_STEREO_HEADSET")) {
+                        SND_DEVICE_FM_HEADSET = ept->id;
+                    }
+                }
             }
-            if (!strcmp(ept->name, "FM_RADIO_SPEAKER_PHONE") ||
-                !strcmp(ept->name, "FM_DIGITAL_SPEAKER_PHONE")) {
+            // Mirror the headset logic: prefer FM_RADIO_SPEAKER_PHONE (id=30,
+            // AUX_PGA speaker path) to match stock "Routing RADIO FM to Speakerphone".
+            if (!strcmp(ept->name, "FM_DIGITAL_SPEAKER_PHONE")) {
+                if (SND_DEVICE_FM_SPEAKER == -1)
+                    SND_DEVICE_FM_SPEAKER = ept->id;
+            } else if (!strcmp(ept->name, "FM_RADIO_SPEAKER_PHONE")) {
                 SND_DEVICE_FM_SPEAKER = ept->id;
             }
 #endif
@@ -1482,29 +1508,15 @@ status_t AudioHardware::setMasterVolume(float v)
 #ifdef HAVE_FM_RADIO
 status_t AudioHardware::setFmOnOff(bool onoff)
 {
-    // Y210 stock stack expects /dev/msm_fm to be opened while FM is active.
-    // Without that, the FM routing can appear "enabled" (SND_DEVICE_FM_*)
-    // but remain silent.
+    // For digital FM (hw.fm.isAnalog=false, AUX_PGA / RADIO FM path via modem RPC),
+    // the stock libaudio does NOT open /dev/msm_fm.  That device is only needed
+    // for the QDSP5v2 AFE FM path (analog mode or platforms that route through
+    // the DSP).  On Y210, snd_set_sound_device(FM_RADIO_STEREO_HEADSET=29) alone
+    // activates the AUX_PGA hardware path; /dev/msm_fm would arm an AFE path
+    // whose AUDDEV events are never delivered (session 6 isn't in dev_info->sessions),
+    // so it has no effect and is better left closed.
     mFmRadioEnabled = onoff;
     LOGI("setFmOnOff: FM %s", onoff ? "on" : "off");
-
-    if (onoff) {
-        if (fmfd < 0) {
-            fmfd = open("/dev/msm_fm", O_RDWR);
-            if (fmfd < 0) {
-                LOGE("Cannot open FM_DEVICE (/dev/msm_fm) errno: %d", errno);
-            } else {
-                fcntl(fmfd, F_SETFD, FD_CLOEXEC);
-                LOGI("Opened FM_DEVICE (/dev/msm_fm) fd=%d", fmfd);
-            }
-        }
-    } else {
-        if (fmfd >= 0) {
-            close(fmfd);
-            fmfd = -1;
-            LOGI("Closed FM_DEVICE (/dev/msm_fm)");
-        }
-    }
 
     return NO_ERROR;
 }
@@ -1607,6 +1619,7 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
             } else if (inputDevice & AudioSystem::DEVICE_IN_WIRED_HEADSET) {
                 LOGI("Routing audio to Wired Headset");
                 new_snd_device = SND_DEVICE_HEADSET;
+                new_post_proc_feature_mask = getHeadsetPostProcMask();
             } else {
                 if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
                     LOGI("Routing audio to Speakerphone");
@@ -1629,13 +1642,18 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
             }
         }
 
-        // FM RX (Y210): the tuner audio is analog and should be routed through
-        // the regular codec headset/speaker paths (stock-like). Using the
-        // dedicated FM endpoints (when present) can leave FM silent on some
-        // builds.
+        // FM RX (Y210): WCN2243 outputs FM audio digitally over I2S2.
+        // Use SND_DEVICE_FM_HEADSET (maps to FM_DIGITAL_STEREO_HEADSET in
+        // the kernel) so the LPASS properly connects I2S2 to the codec.
+        // hw.fm.isAnalog=false confirms digital path on this device.
         if (mFmRadioEnabled) {
-            LOGI("Routing FM audio to Wired Headset (forced)");
-            new_snd_device = SND_DEVICE_HEADSET;
+            if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
+                LOGI("Routing FM audio to Speaker (digital)");
+                new_snd_device = SND_DEVICE_FM_SPEAKER;
+            } else {
+                LOGI("Routing FM audio to Headset (digital)");
+                new_snd_device = SND_DEVICE_FM_HEADSET;
+            }
             new_post_proc_feature_mask = (EQ_ENABLE | RX_IIR_ENABLE);
             new_post_proc_feature_mask &= (MBADRC_DISABLE | ADRC_DISABLE);
         } else
@@ -2471,18 +2489,9 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
 
 status_t AudioHardware::setFmVolume(float v)
 {
-    unsigned int VolValue = (unsigned int)(AudioSystem::logToLinear(v));
-    int volume = (unsigned int)(VolValue*VolValue/100);
-
-    char volhex[10] = "";
-    sprintf(volhex, "0x%x ", volume);
-    char volreg[100] = "hcitool cmd 0x3f 0x15 0xf8 0x0 ";
-
-    strcat(volreg, volhex);
-    strcat(volreg, "0");
-
-    system(volreg);
-
+    // WCN2243 FM audio is routed via I2S directly to the codec, not through
+    // the Bluetooth HCI path. The hcitool approach blocks when BT is off.
+    // Volume is controlled by the standard ACDB/ADSP audio routing instead.
     return NO_ERROR;
 }
 #endif
