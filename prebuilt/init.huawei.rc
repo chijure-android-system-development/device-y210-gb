@@ -486,7 +486,7 @@ service abld /system/bin/mm-abl-daemon
     disabled
 
 #/* < DTS2011122402005 wanghao 20111224 begin */
-service hostapd /system/bin/hostapd /data/misc/wifi/hostapd.conf
+service hostapd /system/bin/sh /system/bin/hostapd_y210.sh
     user root
     group root
     oneshot

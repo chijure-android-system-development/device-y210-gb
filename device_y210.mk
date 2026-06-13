@@ -67,6 +67,7 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/system/etc/AudioFilter.csv:system/etc/AudioFilter.csv \
     device/huawei/y210/prebuilt/system/etc/wifi/wpa_supplicant.conf:system/etc/wifi/wpa_supplicant.conf \
     device/huawei/y210/prebuilt/system/etc/wifi/hostapd.conf:system/etc/wifi/hostapd.conf \
+	    device/huawei/y210/prebuilt/system/bin/hostapd_y210.sh:system/bin/hostapd_y210.sh \
 	    device/huawei/y210/prebuilt/system/bin/hostapd:system/bin/hostapd \
 	    device/huawei/y210/prebuilt/system/bin/fm_qsoc_patches:system/bin/fm_qsoc_patches \
 	    device/huawei/y210/prebuilt/system/bin/fmconfig:system/bin/fmconfig \
