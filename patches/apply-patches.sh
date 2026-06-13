@@ -37,6 +37,9 @@ apply hardware/libhardware_legacy     hardware_libhardware_legacy.patch
 # hardware/msm7k — QualcommCameraHardware: logs spdq: (instrumentación temporal)
 apply hardware/msm7k                  hardware_msm7k.patch
 
+# system/netd — SoftAP ATH: declarar RSN pairwise para WPA2/CCMP
+apply system/netd                     system_netd.patch
+
 # frameworks/base — CameraParameters, RIL/telephony Java, JNI FM
 apply frameworks/base                 frameworks_base.patch
 copy_new frameworks_base_android_hardware_fm_qcom.cpp \

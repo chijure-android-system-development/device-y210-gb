@@ -1,0 +1,13 @@
+diff --git a/SoftapControllerATH.cpp b/SoftapControllerATH.cpp
+index 1373958..7a563d4 100644
+--- a/SoftapControllerATH.cpp
++++ b/SoftapControllerATH.cpp
+@@ -748,6 +748,8 @@ int SoftapController::setSoftap(int argc, char *argv[]) {
+             write(fd, buf, len);
+             len = snprintf(buf, sizeof(buf), "wpa_pairwise=CCMP\n");
+             write(fd, buf, len);
++            len = snprintf(buf, sizeof(buf), "rsn_pairwise=CCMP\n");
++            write(fd, buf, len);
+             if (argc > 6) {
+                 len = snprintf(buf, sizeof(buf), "wpa_passphrase=%s\n",argv[6]);
+                 write(fd, buf, len);
