@@ -59,6 +59,7 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/init.y210.rc:root/init.y210.rc \
     device/huawei/y210/prebuilt/init.mem.rc:root/init.mem.rc \
     device/huawei/y210/prebuilt/ueventd.huawei.rc:root/ueventd.huawei.rc \
+    device/huawei/y210/prebuilt/ueventd.huawei.rc:root/ueventd.msm7x27a.rc \
     device/huawei/y210/prebuilt/init.qcom.sh:root/init.qcom.sh \
     device/huawei/y210/prebuilt/init.huawei.usb.rc:root/init.huawei.usb.rc \
     device/huawei/y210/prebuilt/system/etc/init.qcom.bt.sh:system/etc/init.qcom.bt.sh \
