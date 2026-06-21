@@ -34,24 +34,29 @@ apply hardware/ril                    hardware_ril.patch
 # hardware/libhardware_legacy — wifi.c: soporte ath6k/AR6003 completo
 apply hardware/libhardware_legacy     hardware_libhardware_legacy.patch
 
-# hardware/msm7k — QualcommCameraHardware: logs spdq: (instrumentación temporal)
+# hardware/msm7k — copybit: libcutils, stdlib.h, disable MDP blit para status bar
 apply hardware/msm7k                  hardware_msm7k.patch
 
 # system/netd — SoftAP ATH: declarar RSN pairwise para WPA2/CCMP
 apply system/netd                     system_netd.patch
 
-# frameworks/base — CameraParameters, RIL/telephony Java, JNI FM
+# frameworks/base — CameraParameters, RIL/telephony Java, JNI FM, StatusBar, Surface
 apply frameworks/base                 frameworks_base.patch
 copy_new frameworks_base_android_hardware_fm_qcom.cpp \
          frameworks/base/core/jni/android_hardware_fm_qcom.cpp
+# frameworks/base — FM radio Java: FmRxControls, FmRxEventListner, FmTransceiver
+apply frameworks/base                 frameworks_base_fm_java.patch
 
 # packages/apps/Camera — adaptaciones Y210 al lifecycle de cámara
 apply packages/apps/Camera            packages_apps_Camera.patch
 
+# packages/apps/FM — app FM radio: config, FMRadio, FMRadioService, FmSharedPreferences
+apply packages/apps/FM                packages_apps_FM.patch
+
 # packages/apps/Settings — APN editor / APN settings para Claro Perú
 apply packages/apps/Settings          packages_apps_Settings.patch
 
-# vendor/cyanogen — integración del producto y210 en AndroidProducts.mk
+# vendor/cyanogen — APNs Claro Perú, common.mk, squisher fix
 apply vendor/cyanogen                 vendor_cyanogen.patch
 copy_new vendor_cyanogen_y210.mk      vendor/cyanogen/products/cyanogen_y210.mk
 

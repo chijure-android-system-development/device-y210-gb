@@ -1,0 +1,63 @@
+diff --git a/core/java/android/hardware/fmradio/FmRxControls.java b/core/java/android/hardware/fmradio/FmRxControls.java
+index b71aa578798..c6aaef602e8 100644
+--- a/core/java/android/hardware/fmradio/FmRxControls.java
++++ b/core/java/android/hardware/fmradio/FmRxControls.java
+@@ -97,13 +97,10 @@ class FmRxControls
+     * set mute control
+     */
+    public void muteControl(int fd, boolean on) {
+-      if (on)
+-      {
+-         int err = FmReceiverJNI.setControlNative(fd, V4L2_CID_AUDIO_MUTE, 3 );
+-      } else
+-      {
+-         int err = FmReceiverJNI.setControlNative(fd, V4L2_CID_AUDIO_MUTE, 4 );
+-      }
++      // tavarua V4L2_CID_AUDIO_MUTE is boolean: 1=mute, 0=unmute.
++      // Prior values 3/4 were clamped to 1 by the driver, leaving the
++      // chip permanently muted regardless of the 'on' parameter.
++      FmReceiverJNI.setControlNative(fd, V4L2_CID_AUDIO_MUTE, on ? 1 : 0);
+    }
+ 
+    /*
+diff --git a/core/java/android/hardware/fmradio/FmRxEventListner.java b/core/java/android/hardware/fmradio/FmRxEventListner.java
+index 7453faee304..7b65ea417d7 100644
+--- a/core/java/android/hardware/fmradio/FmRxEventListner.java
++++ b/core/java/android/hardware/fmradio/FmRxEventListner.java
+@@ -71,6 +71,14 @@ class FmRxEventListner {
+                     int i = FmReceiverJNI.getBufferNative (fd, buff, EVENT_LISTEN);
+                     Log.d(TAG, "Received <" +buff[0]+ "> event. Int: " + i);
+ 
++                    if (i < 0) {
++                        // VIDIOC_DQBUF failed (fd invalid or driver error).
++                        // buff[0] is unmodified (0 = READY_EVENT from init) —
++                        // do NOT dispatch it or we spin in a false-READY loop.
++                        try { Thread.sleep(50); } catch (InterruptedException e) { }
++                        continue;
++                    }
++
+                     switch(buff[0]){
+ 
+                     case 0:
+diff --git a/core/java/android/hardware/fmradio/FmTransceiver.java b/core/java/android/hardware/fmradio/FmTransceiver.java
+index 8c95f27a230..edffd467d63 100644
+--- a/core/java/android/hardware/fmradio/FmTransceiver.java
++++ b/core/java/android/hardware/fmradio/FmTransceiver.java
+@@ -132,7 +132,7 @@ public class FmTransceiver
+    */
+    protected boolean acquire(String device){
+       boolean bStatus;
+-      if (sFd == 0)
++      if (sFd <= 0)
+       {
+          sFd = FmReceiverJNI.acquireFdNative("/dev/radio0");
+          Log.d(TAG, "** Opened "+ sFd);
+@@ -140,7 +140,7 @@ public class FmTransceiver
+       {
+          Log.d(TAG, "Already opened");
+       }
+-      if(sFd != 0)
++      if(sFd > 0)
+       {
+          bStatus = true;
+       }

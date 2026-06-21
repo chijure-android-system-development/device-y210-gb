@@ -368,6 +368,8 @@ class AudioHardware : public  AudioHardwareBase {
 		int32_t      SND_DEVICE_CARKIT;
 		int32_t      SND_DEVICE_FM_SPEAKER;
 		int32_t      SND_DEVICE_FM_HEADSET;
+		int32_t      SND_DEVICE_FM_ANALOG_HEADSET;
+		int32_t      SND_DEVICE_FM_ANALOG_SPEAKER;
 		int32_t      SND_DEVICE_NO_MIC_HEADSET;
 
 		//Low level audio driver handle
@@ -378,6 +380,7 @@ class AudioHardware : public  AudioHardwareBase {
 		int          mFmRadioEnabled;
 		int          mFmPrev;
 		int          mFmVolume;
+		bool         mFmIsAnalog;
 		int          mTtyMode;
 		int          fmfd;
 		bool         mMicMute;

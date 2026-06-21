@@ -1,0 +1,235 @@
+diff --git a/res/values/config.xml b/res/values/config.xml
+index 5b5bb6b..76404f7 100644
+--- a/res/values/config.xml
++++ b/res/values/config.xml
+@@ -1,11 +1,11 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <!-- Whether or not Bluetooth must be enabled for FM radio -->
+-    <bool name="require_bt">true</bool>
++    <!-- Y210 uses analog FM (tavarua V4L2), not BT FM — no BT needed -->
++    <bool name="require_bt">false</bool>
+ 
+     <!-- Whether or not output to speaker is supported -->
+     <bool name="speaker_supported">true</bool>
+ 
+-    <!-- Whether or not seek is supported -->
+-    <bool name="seek_supported">false</bool>
++    <!-- Seek is supported via TAVARUA_SRCHON private control -->
++    <bool name="seek_supported">true</bool>
+ </resources>
+diff --git a/src/com/android/fm/radio/FMRadio.java b/src/com/android/fm/radio/FMRadio.java
+index f5ffb0a..aeb09ed 100644
+--- a/src/com/android/fm/radio/FMRadio.java
++++ b/src/com/android/fm/radio/FMRadio.java
+@@ -898,48 +898,59 @@ public class FMRadio extends Activity {
+     }
+ 
+     private void enableRadio() {
++        Log.e(LOGTAG, "enableRadio: entered");
+         mIsScaning = false;
+         mIsSeeking = false;
+         mIsSearching = false;
+-        boolean bStatus = false;
+ 
+-        if (mService != null) {
+-            try {
++        if (mService == null) { Log.e(LOGTAG, "enableRadio: mService null, abort"); return; }
+ 
+-                boolean radioOn = mService.isFmOn();
++        // Capture pre-enable state on UI thread before going async.
++        final boolean radioAlreadyOn;
++        try {
++            Log.e(LOGTAG, "enableRadio: calling isFmOn");
++            radioAlreadyOn = mService.isFmOn();
++            Log.e(LOGTAG, "enableRadio: isFmOn=" + radioAlreadyOn);
++        } catch (RemoteException e) {
++            Log.e(LOGTAG, "RemoteException in enableRadio isFmOn", e);
++            return;
++        }
+ 
+-                // reset volume to avoid a bug that volume will be MAX
+-                int vol = AudioSystem.getStreamVolumeIndex(AudioSystem.STREAM_FM);
+-                AudioSystem.setStreamVolumeIndex(AudioSystem.STREAM_FM, vol);
++        Log.e(LOGTAG, "enableRadio: launching AsyncTask");
+ 
+-                if (!isPhoneInCall()) {
+-                    mService.unMute();
+-                    bStatus = mService.fmOn();
++        // mService.fmOn() opens /dev/radio0 and may wait briefly for fminit.
++        // Run it in a background thread so the UI thread stays responsive.
++        new AsyncTask<Void, Void, Boolean>() {
++            @Override
++            protected Boolean doInBackground(Void... p) {
++                try {
++                    if (!isPhoneInCall()) {
++                        mService.unMute();
++                        return mService.fmOn();
++                    }
++                } catch (RemoteException e) {
++                    Log.e(LOGTAG, "RemoteException in enableRadio bg", e);
+                 }
++                return false;
++            }
+ 
++            @Override
++            protected void onPostExecute(Boolean bStatus) {
+                 if (bStatus) {
+                     if (isAntennaAvailable()) {
+                         mFreqIndicator.setFrequency(FmSharedPreferences.getTunedFrequency());
+-                        if (!radioOn) {
+-                            // Set the previously tuned frequency
++                        if (!radioAlreadyOn) {
+                             tuneRadio(FmSharedPreferences.getTunedFrequency());
+-
+-                            // The output device is not set on a FM radio power on so we do it here
+-                            if(FmSharedPreferences.getSpeaker()) {
++                            if (FmSharedPreferences.getSpeaker()) {
+                                 switchToSpeaker();
+-                            }
+-                            else {
++                            } else {
+                                 switchToHeadset();
+                             }
+                         }
+-                        // Update the speaker icon
+                         setSpeakerUI(FmSharedPreferences.getSpeaker());
+-
+-                        // Turn on the FM radio
+                         enableRadioOnOffUI();
+-                    }
+-                    else {
+-                        Toast toast =Toast.makeText(this,
++                    } else {
++                        Toast toast = Toast.makeText(FMRadio.this,
+                                 getString(R.string.need_headset_for_antenna),
+                                 Toast.LENGTH_LONG);
+                         toast.setGravity(Gravity.TOP | Gravity.CENTER, 0, 240);
+@@ -947,14 +958,12 @@ public class FMRadio extends Activity {
+                         disableRadio();
+                     }
+                 } else {
+-                    Log.e(LOGTAG, " mService.fmOn failed");
++                    Log.e(LOGTAG, "mService.fmOn failed");
+                     mCommandFailed = CMD_FMON;
+                     showDialog(DIALOG_CMD_FAILED);
+                 }
+-            } catch (RemoteException e) {
+-                Log.e(LOGTAG, "RemoteException in enableRadio", e);
+             }
+-        }
++        }.execute();
+     }
+ 
+     private void disableRadio() {
+diff --git a/src/com/android/fm/radio/FMRadioService.java b/src/com/android/fm/radio/FMRadioService.java
+index b849063..b96467d 100644
+--- a/src/com/android/fm/radio/FMRadioService.java
++++ b/src/com/android/fm/radio/FMRadioService.java
+@@ -30,6 +30,7 @@ import android.util.Log;
+ import android.widget.RemoteViews;
+ import android.os.SystemProperties;
+ 
++import java.io.IOException;
+ import java.lang.ref.WeakReference;
+ 
+ /**
+@@ -218,6 +219,24 @@ public class FMRadioService extends Service {
+         mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, this.getClass().getName());
+         mWakeLock.setReferenceCounted(false);
+ 
++        // Pre-load FM firmware in the background so it is ready by the time
++        // the user presses the power button. fminit opens /dev/radio0, loads
++        // firmware via fm_qsoc_patches, then closes the device and sets
++        // hw.fm.init=1. Running it here avoids blocking the UI thread later.
++        if (!"1".equals(SystemProperties.get("hw.fm.init", "0"))) {
++            new Thread("fminit-preload") {
++                @Override public void run() {
++                    try {
++                        Runtime.getRuntime().exec("/system/bin/fminit").waitFor();
++                    } catch (IOException e) {
++                        Log.w(LOGTAG, "fminit exec failed: " + e.getMessage());
++                    } catch (InterruptedException e) {
++                        Thread.currentThread().interrupt();
++                    }
++                }
++            }.start();
++        }
++
+         // Register for Screen On/off broadcast notifications
+         registerScreenOnOffListener();
+ 
+@@ -521,8 +540,11 @@ public class FMRadioService extends Service {
+             fm_intent.putExtra("state", 1);
+             context.sendBroadcast(fm_intent);
+         }
++        Log.d(LOGTAG, "startFM: calling setDeviceConnectionState");
+         AudioSystem.setDeviceConnectionState(AudioSystem.DEVICE_OUT_FM, AudioSystem.DEVICE_STATE_AVAILABLE, "");
++        Log.d(LOGTAG, "startFM: setDeviceConnectionState done");
+         lockscreenBroadcast(true,getFreq());
++        Log.d(LOGTAG, "startFM: done");
+     }
+ 
+     private void stopFM(){
+@@ -807,7 +829,7 @@ public class FMRadioService extends Service {
+         Log.d(LOGTAG, "fmOn");
+ 
+         if (mReceiver == null) {
+-            mReceiver = new FmReceiver(FMRADIO_DEVICE_FD_STRING, null);
++            mReceiver = new FmReceiver(FMRADIO_DEVICE_FD_STRING, fmCallbacks);
+             if (mReceiver == null) {
+                 throw new RuntimeException("FmReceiver service not available!");
+             }
+@@ -836,25 +858,19 @@ public class FMRadioService extends Service {
+             }
+ 
+             if (bStatus == true) {
+-                startFM();
+-                bStatus = mReceiver.registerRdsGroupProcessing(FmReceiver.FM_RX_RDS_GRP_RT_EBL
+-                        | FmReceiver.FM_RX_RDS_GRP_PS_EBL | FmReceiver.FM_RX_RDS_GRP_AF_EBL
+-                        | FmReceiver.FM_RX_RDS_GRP_PS_SIMPLE_EBL);
+-                Log.d(LOGTAG, "registerRdsGroupProcessing done, Status :" + bStatus);
+-                bStatus = enableAutoAF(FmSharedPreferences.getAutoAFSwitch());
+-                Log.d(LOGTAG, "enableAutoAF done, Status :" + bStatus);
+-                /* Put the hardware into normal mode */
+-                bStatus = setLowPowerMode(false);
+-                Log.d(LOGTAG, "setLowPowerMode done, Status :" + bStatus);
+-
+-                /* There is no internal Antenna */
+-                bStatus = mReceiver.setInternalAntenna(false);
+-                Log.d(LOGTAG, "setInternalAntenna done, Status :" + bStatus);
+-
+-                /* Read back to verify the internal Antenna mode */
+-                readInternalAntennaAvailable();
+-
+                 mFMOn = true;
++                mMuted = false;
++                // Chip starts muted after enable(); unmute before routing audio.
++                mReceiver.setMuteMode(FmReceiver.FM_RX_UNMUTE);
++                // Lower seek threshold to maximum sensitivity so weak stations are
++                // found. Driver default is often STRONG (-111 dBm) which misses most
++                // stations in areas with average signal strength.
++                mReceiver.setSignalThreshold(FmReceiver.FM_RX_SIGNAL_STRENGTH_VERY_WEAK);
++                startFM();
++                // Skip blocking JNI calls (registerRdsGroupProcessing, enableAutoAF,
++                // setLowPowerMode, setInternalAntenna) — they wait for chip interrupts
++                // that don't arrive on WCN2243/MSM7x27A and stall the thread indefinitely.
++                // mHeadsetPlugged covers the antenna check; RDS is non-critical.
+                 bStatus = true;
+             } else {
+                 stop();
+diff --git a/src/com/android/fm/radio/FmSharedPreferences.java b/src/com/android/fm/radio/FmSharedPreferences.java
+index 6843b53..b4fc714 100644
+--- a/src/com/android/fm/radio/FmSharedPreferences.java
++++ b/src/com/android/fm/radio/FmSharedPreferences.java
+@@ -50,7 +50,9 @@ public class FmSharedPreferences {
+     public static final int REGIONAL_BAND_TURKEY = 33;
+     public static final int REGIONAL_BAND_UNITEDKINGDOM = 34;
+     public static final int REGIONAL_BAND_UNITED_STATES = 35;
+-    public static final int REGIONAL_BAND_DEFAULT = REGIONAL_BAND_NORTH_AMERICA;
++    // Peru (and most of Latin America) uses 87.5-108.0 MHz with 100 kHz steps,
++    // same as the European standard — not North America's 200 kHz steps.
++    public static final int REGIONAL_BAND_DEFAULT = REGIONAL_BAND_EUROPE;
+ 
+     private static final String LOGTAG = FMRadio.LOGTAG;
+ 
