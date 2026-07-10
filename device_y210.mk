@@ -66,6 +66,7 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/system/etc/init.qcom.fm.sh:system/etc/init.qcom.fm.sh \
     device/huawei/y210/prebuilt/system/etc/AutoVolumeControl.txt:system/etc/AutoVolumeControl.txt \
     device/huawei/y210/prebuilt/system/etc/AudioFilter.csv:system/etc/AudioFilter.csv \
+    device/huawei/y210/prebuilt/system/etc/AudioFilter_MSM7225A_Y210.csv:system/etc/AudioFilter_MSM7225A_Y210.csv \
     device/huawei/y210/prebuilt/system/etc/wifi/wpa_supplicant.conf:system/etc/wifi/wpa_supplicant.conf \
     device/huawei/y210/prebuilt/system/etc/wifi/hostapd.conf:system/etc/wifi/hostapd.conf \
 	    device/huawei/y210/prebuilt/system/bin/hostapd_y210.sh:system/bin/hostapd_y210.sh \
