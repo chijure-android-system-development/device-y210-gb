@@ -40,12 +40,32 @@ apply hardware/msm7k                  hardware_msm7k.patch
 # system/netd — SoftAP ATH: declarar RSN pairwise para WPA2/CCMP
 apply system/netd                     system_netd.patch
 
-# frameworks/base — CameraParameters, RIL/telephony Java, JNI FM, StatusBar, Surface
-apply frameworks/base                 frameworks_base.patch
+# frameworks/base — cámara: CameraParameters (HFR/denoise/redeye/YV12),
+#                   StagefrightRecorder, CameraService (pmem_adsp restart),
+#                   TextureManager (conversión NV21->RGB565 por software)
+apply frameworks/base                 frameworks_base_camera.patch
+
+# frameworks/base — RIL/telephony: DataConnection (respuesta QCRIL malformada),
+#                   RIL.java/RILConstants (unsol 1037), GsmDataConnectionTracker
+#                   (fallback de operator numeric), Zygote (GID AID_QCOM_ONCRPC)
+apply frameworks/base                 frameworks_base_telephony.patch
+
+# frameworks/base — PhoneFactory: rama faltante para instanciar HuaweiQualcommRIL
+#                   (ya vive en device/huawei/y210/ril/, inyectado via
+#                   FRAMEWORKS_BASE_SUBDIRS en device_y210.mk, pero nunca se
+#                   seleccionaba). Ver device/huawei/y210/docs/RIL_NOTES.md.
+apply frameworks/base                 frameworks_base_ril_class.patch
+
+# frameworks/base — FM: hookup JNI (Android.mk, BOARD_FM_DEVICE=qcom) +
+#                   implementación nativa + stack Java (FmRxControls, etc.)
+apply frameworks/base                 frameworks_base_fm.patch
 copy_new frameworks_base_android_hardware_fm_qcom.cpp \
          frameworks/base/core/jni/android_hardware_fm_qcom.cpp
-# frameworks/base — FM radio Java: FmRxControls, FmRxEventListner, FmTransceiver
 apply frameworks/base                 frameworks_base_fm_java.patch
+
+# frameworks/base — status bar: dedup de setIcon + workaround de ghosting
+#                   (copy-back + zero back buffer) en superficies <=26px alto
+apply frameworks/base                 frameworks_base_statusbar.patch
 
 # packages/apps/Camera — adaptaciones Y210 al lifecycle de cámara
 apply packages/apps/Camera            packages_apps_Camera.patch
@@ -56,7 +76,9 @@ apply packages/apps/FM                packages_apps_FM.patch
 # packages/apps/Settings — APN editor / APN settings para Claro Perú
 apply packages/apps/Settings          packages_apps_Settings.patch
 
-# vendor/cyanogen — APNs Claro Perú, common.mk, squisher fix
+# vendor/cyanogen — APN Claro Perú (recortado: se saco un hunk que borraba
+# ~60 entradas de products/AndroidProducts.mk y rompia breakfast/lunch de
+# otros dispositivos del arbol sin dar ningun beneficio a y210)
 apply vendor/cyanogen                 vendor_cyanogen.patch
 copy_new vendor_cyanogen_y210.mk      vendor/cyanogen/products/cyanogen_y210.mk
 

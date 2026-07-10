@@ -1,0 +1,282 @@
+diff --git a/include/camera/CameraParameters.h b/include/camera/CameraParameters.h
+index 539142685f5..5df79926892 100644
+--- a/include/camera/CameraParameters.h
++++ b/include/camera/CameraParameters.h
+@@ -359,6 +359,21 @@ public:
+     // Example value: "yuv420sp" or PIXEL_FORMAT_XXX constants. Read only.
+     static const char KEY_VIDEO_FRAME_FORMAT[];
+ 
++    // Enable/disable or select high frame rate video recording mode.
++    // Vendor extensions (not part of the original GB public API) may use this
++    // key to control HFR behavior.
++    static const char KEY_VIDEO_HIGH_FRAME_RATE[];
++    static const char KEY_SUPPORTED_VIDEO_HIGH_FRAME_RATE_MODES[];
++
++    // Values for KEY_VIDEO_HIGH_FRAME_RATE.
++    static const char VIDEO_HFR_OFF[];
++    static const char VIDEO_HFR_2X[];
++    static const char VIDEO_HFR_3X[];
++    static const char VIDEO_HFR_4X[];
++
++    // Supported HFR sizes.
++    static const char KEY_SUPPORTED_HFR_SIZES[];
++
+     // Value for KEY_ZOOM_SUPPORTED or KEY_SMOOTH_ZOOM_SUPPORTED.
+     static const char TRUE[];
+ 
+@@ -381,6 +396,24 @@ public:
+ 
+     static const char KEY_SHUTTER_SOUND[];
+     static const char KEY_BRIGHTNESS_MODE[];
++    static const char KEY_DENOISE[];
++    static const char KEY_SUPPORTED_DENOISE[];
++    static const char KEY_REDEYE_REDUCTION[];
++    static const char KEY_SUPPORTED_REDEYE_REDUCTION[];
++    static const char KEY_MEMORY_COLOR_ENHANCEMENT[];
++    static const char KEY_SUPPORTED_MEM_COLOR_ENHANCE_MODES[];
++
++    // Values for memory color enhancement.
++    static const char MCE_ENABLE[];
++    static const char MCE_DISABLE[];
++
++    // Values for denoise.
++    static const char DENOISE_OFF[];
++    static const char DENOISE_ON[];
++
++    // Values for redeye reduction.
++    static const char REDEYE_REDUCTION_ENABLE[];
++    static const char REDEYE_REDUCTION_DISABLE[];
+ 
+     static const char KEY_HISTOGRAM[] ;
+     static const char KEY_SUPPORTED_HISTOGRAM_MODES[] ;
+@@ -491,6 +524,7 @@ public:
+     static const char PIXEL_FORMAT_YUV422SP[];
+     static const char PIXEL_FORMAT_YUV420SP[]; // NV21
+     static const char PIXEL_FORMAT_YUV420P[];
++    static const char PIXEL_FORMAT_YV12[];
+     static const char PIXEL_FORMAT_YUV422I[]; // YUY2
+     static const char PIXEL_FORMAT_RGB565[];
+     static const char PIXEL_FORMAT_JPEG[];
+diff --git a/libs/camera/CameraParameters.cpp b/libs/camera/CameraParameters.cpp
+index 703f2a9c5fa..f60ca493833 100644
+--- a/libs/camera/CameraParameters.cpp
++++ b/libs/camera/CameraParameters.cpp
+@@ -81,11 +81,78 @@ const char CameraParameters::KEY_ZOOM_SUPPORTED[] = "zoom-supported";
+ const char CameraParameters::KEY_SMOOTH_ZOOM_SUPPORTED[] = "smooth-zoom-supported";
+ const char CameraParameters::KEY_FOCUS_DISTANCES[] = "focus-distances";
+ const char CameraParameters::KEY_VIDEO_FRAME_FORMAT[] = "video-frame-format";
++const char CameraParameters::KEY_VIDEO_HIGH_FRAME_RATE[] = "video-hfr";
++const char CameraParameters::KEY_SUPPORTED_VIDEO_HIGH_FRAME_RATE_MODES[] =
++        "video-hfr-values";
++const char CameraParameters::KEY_SUPPORTED_HFR_SIZES[] = "hfr-size-values";
+ const char CameraParameters::KEY_CAF[] = "continuous-af";
+ const char CameraParameters::KEY_CONTINUOUS_AF[] = "continuous-af";
+ const char CameraParameters::KEY_SUPPORTED_CAF[] = "continuous-af-values";
+ const char CameraParameters::KEY_SUPPORTED_CONTINUOUS_AF[] = "continuous-af-values";
+ const char CameraParameters::KEY_VIDEO_SIZE[] = "video-size";
++const char CameraParameters::KEY_DENOISE[] = "denoise";
++const char CameraParameters::KEY_SUPPORTED_DENOISE[] = "denoise-values";
++const char CameraParameters::KEY_REDEYE_REDUCTION[] = "redeye-reduction";
++const char CameraParameters::KEY_SUPPORTED_REDEYE_REDUCTION[] =
++        "redeye-reduction-values";
++const char CameraParameters::KEY_MEMORY_COLOR_ENHANCEMENT[] = "memory-color-enhancement";
++const char CameraParameters::KEY_SUPPORTED_MEM_COLOR_ENHANCE_MODES[] =
++        "memory-color-enhancement-values";
++const char CameraParameters::MCE_ENABLE[] = "enable";
++const char CameraParameters::MCE_DISABLE[] = "disable";
++const char CameraParameters::DENOISE_OFF[] = "off";
++const char CameraParameters::DENOISE_ON[] = "on";
++const char CameraParameters::REDEYE_REDUCTION_ENABLE[] = "enable";
++const char CameraParameters::REDEYE_REDUCTION_DISABLE[] = "disable";
++
++// Values for high frame rate video recording mode.
++const char CameraParameters::VIDEO_HFR_OFF[] = "off";
++const char CameraParameters::VIDEO_HFR_2X[] = "2x";
++const char CameraParameters::VIDEO_HFR_3X[] = "3x";
++const char CameraParameters::VIDEO_HFR_4X[] = "4x";
++
++// Keep VIDEO_HFR_OFF from being removed by --gc-sections when unused by AOSP/CM7
++// code, but required by some vendor camera blobs (e.g. expecting the symbol to
++// exist at link time).
++static const void* const kForceExportVideoHfrOff __attribute__((used)) =
++        CameraParameters::VIDEO_HFR_OFF;
++static const void* const kForceExportVideoHfr2x __attribute__((used)) =
++        CameraParameters::VIDEO_HFR_2X;
++static const void* const kForceExportVideoHfr3x __attribute__((used)) =
++        CameraParameters::VIDEO_HFR_3X;
++static const void* const kForceExportVideoHfr4x __attribute__((used)) =
++        CameraParameters::VIDEO_HFR_4X;
++static const void* const kForceExportKeySupportedHfrSizes __attribute__((used)) =
++        CameraParameters::KEY_SUPPORTED_HFR_SIZES;
++static const void* const kForceExportKeySupportedVideoHighFrameRateModes __attribute__((used)) =
++        CameraParameters::KEY_SUPPORTED_VIDEO_HIGH_FRAME_RATE_MODES;
++
++static const void* const kForceExportKeyDenoise __attribute__((used)) =
++        CameraParameters::KEY_DENOISE;
++static const void* const kForceExportKeySupportedDenoise __attribute__((used)) =
++        CameraParameters::KEY_SUPPORTED_DENOISE;
++static const void* const kForceExportKeyRedeyeReduction __attribute__((used)) =
++        CameraParameters::KEY_REDEYE_REDUCTION;
++static const void* const kForceExportKeySupportedRedeyeReduction __attribute__((used)) =
++        CameraParameters::KEY_SUPPORTED_REDEYE_REDUCTION;
++static const void* const kForceExportKeyMemoryColorEnhancement __attribute__((used)) =
++        CameraParameters::KEY_MEMORY_COLOR_ENHANCEMENT;
++static const void* const kForceExportKeySupportedMemColorEnhanceModes __attribute__((used)) =
++        CameraParameters::KEY_SUPPORTED_MEM_COLOR_ENHANCE_MODES;
++static const void* const kForceExportMceEnable __attribute__((used)) =
++        CameraParameters::MCE_ENABLE;
++static const void* const kForceExportMceDisable __attribute__((used)) =
++        CameraParameters::MCE_DISABLE;
++static const void* const kForceExportDenoiseOff __attribute__((used)) =
++        CameraParameters::DENOISE_OFF;
++static const void* const kForceExportDenoiseOn __attribute__((used)) =
++        CameraParameters::DENOISE_ON;
++static const void* const kForceExportRedeyeReductionEnable __attribute__((used)) =
++        CameraParameters::REDEYE_REDUCTION_ENABLE;
++static const void* const kForceExportRedeyeReductionDisable __attribute__((used)) =
++        CameraParameters::REDEYE_REDUCTION_DISABLE;
++static const void* const kForceExportPixelFormatYv12 __attribute__((used)) =
++        CameraParameters::PIXEL_FORMAT_YV12;
+ 
+ const char CameraParameters::TRUE[] = "true";
+ const char CameraParameters::FOCUS_DISTANCE_INFINITY[] = "Infinity";
+@@ -157,6 +224,7 @@ const char CameraParameters::PIXEL_FORMAT_YUV422SP[] = "yuv422sp";
+ const char CameraParameters::PIXEL_FORMAT_YUV420SP[] = "yuv420sp";
+ const char CameraParameters::PIXEL_FORMAT_YUV420SP_ADRENO[] = "yuv420sp-adreno";
+ const char CameraParameters::PIXEL_FORMAT_YUV420P[] = "yuv420p";
++const char CameraParameters::PIXEL_FORMAT_YV12[] = "yuv420p";
+ const char CameraParameters::PIXEL_FORMAT_YUV422I[] = "yuv422i-yuyv";
+ const char CameraParameters::PIXEL_FORMAT_RGB565[] = "rgb565";
+ const char CameraParameters::PIXEL_FORMAT_JPEG[] = "jpeg";
+diff --git a/media/libmediaplayerservice/StagefrightRecorder.cpp b/media/libmediaplayerservice/StagefrightRecorder.cpp
+index e0ba2902ff0..f2239977c5e 100755
+--- a/media/libmediaplayerservice/StagefrightRecorder.cpp
++++ b/media/libmediaplayerservice/StagefrightRecorder.cpp
+@@ -1033,8 +1033,11 @@ status_t StagefrightRecorder::setupCameraSource() {
+     // Check on video frame size
+     int frameWidth = 0, frameHeight = 0;
+     newCameraParams.getPreviewSize(&frameWidth, &frameHeight);
+-    if (frameWidth  < 0 || frameWidth  != mVideoWidth ||
+-        frameHeight < 0 || frameHeight != mVideoHeight) {
++    // Allow (-1,-1) when the camera HAL returns empty parameters (e.g., on
++    // msm7x27 after a stop/restart cycle in setPreviewDisplay); the preview
++    // is already confirmed working so treat missing size as non-fatal.
++    if (frameWidth > 0 && frameHeight > 0 &&
++            (frameWidth != mVideoWidth || frameHeight != mVideoHeight)) {
+         LOGE("Failed to set the video frame size to %dx%d",
+                 mVideoWidth, mVideoHeight);
+         IPCThreadState::self()->restoreCallingIdentity(token);
+diff --git a/services/camera/libcameraservice/CameraService.cpp b/services/camera/libcameraservice/CameraService.cpp
+index 55604fb64cf..fd388a5bec7 100644
+--- a/services/camera/libcameraservice/CameraService.cpp
++++ b/services/camera/libcameraservice/CameraService.cpp
+@@ -690,7 +690,13 @@ status_t CameraService::Client::setPreviewDisplay(const sp<ISurface>& surface) {
+             if (mSurface != NULL)
+                 result = setOverlay();
+         } else if (mSurface != 0) {
+-            result = registerPreviewBuffers();
++            // pmem_adsp heap cannot be mmap'd cross-process on msm7x27 once
++            // allocated. Stop preview, restart immediately with the new surface
++            // set so startPreview creates a fresh mappable heap and registers it.
++            mHardware->stopPreview();
++            if (mHardware->startPreview() == NO_ERROR) {
++                registerPreviewBuffers();
++            }
+         }
+     }
+ 
+@@ -998,7 +1004,9 @@ status_t CameraService::Client::startPreviewMode() {
+            // Unregister here because the surface may be previously registered
+            // with the raw (snapshot) heap.
+            mSurface->unregisterBuffers();
+-           result = registerPreviewBuffers();
++           // registerPreviewBuffers uses pmem_adsp which cannot be mmap'd
++           // across process boundaries on msm7x27 — treat failure as non-fatal.
++           registerPreviewBuffers();
+         }
+     }
+     return result;
+diff --git a/services/surfaceflinger/TextureManager.cpp b/services/surfaceflinger/TextureManager.cpp
+index 9e24f90d550..fb15ad35b1e 100644
+--- a/services/surfaceflinger/TextureManager.cpp
++++ b/services/surfaceflinger/TextureManager.cpp
+@@ -107,6 +107,7 @@ bool TextureManager::isSupportedYuvFormat(int format)
+ {
+     switch (format) {
+     case HAL_PIXEL_FORMAT_YV12:
++    case HAL_PIXEL_FORMAT_YCrCb_420_SP:
+         return true;
+     }
+     return false;
+@@ -180,6 +181,34 @@ status_t TextureManager::initEglImage(Image* pImage,
+     return err;
+ }
+ 
++// BT.601 NV21 (Y plane + VU interleaved) → RGB565.
++// Processes two horizontally-adjacent pixels per iteration to share UV loads.
++static void convertNV21toRGB565(
++        const uint8_t* src, uint16_t* dst, int width, int height, int stride)
++{
++    const uint8_t* uvp = src + stride * height;
++    for (int y = 0; y < height; y++) {
++        const uint8_t* yrow = src + y * stride;
++        const uint8_t* uvrow = uvp + (y >> 1) * stride;
++        uint16_t* drow = dst + y * width;
++        for (int x = 0; x < width; x += 2) {
++            int v = (int)uvrow[x]     - 128;  // Cr (V first in NV21)
++            int u = (int)uvrow[x + 1] - 128;  // Cb
++            int rv = 409 * v, gu = 100 * u, gv = 208 * v, bu = 516 * u;
++            for (int p = 0; p < 2; p++) {
++                int c = (int)yrow[x + p] - 16;
++                int r = (298*c + rv       + 128) >> 8;
++                int g = (298*c - gu - gv  + 128) >> 8;
++                int b = (298*c       + bu + 128) >> 8;
++                r = r<0?0:r>255?255:r;
++                g = g<0?0:g>255?255:g;
++                b = b<0?0:b>255?255:b;
++                drow[x + p] = (uint16_t)(((r>>3)<<11)|((g>>2)<<5)|(b>>3));
++            }
++        }
++    }
++}
++
+ status_t TextureManager::loadTexture(Texture* texture,
+         const Region& dirty, const GGLSurface& t)
+ {
+@@ -261,8 +290,14 @@ status_t TextureManager::loadTexture(Texture* texture,
+             glTexImage2D(GL_TEXTURE_2D, 0,
+                     GL_RGBA, texture->potWidth, texture->potHeight, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, data);
++        } else if (t.format == HAL_PIXEL_FORMAT_YCrCb_420_SP) {
++            // NV21: allocate RGB565 texture; content uploaded via subimage below
++            glTexImage2D(GL_TEXTURE_2D, 0,
++                    GL_RGB, texture->potWidth, texture->potHeight, 0,
++                    GL_RGB, GL_UNSIGNED_SHORT_5_6_5, NULL);
++            data = NULL;  // force subimage path to run
+         } else if (isSupportedYuvFormat(t.format)) {
+-            // just show the Y plane of YUV buffers
++            // just show the Y plane of other YUV buffers
+             glTexImage2D(GL_TEXTURE_2D, 0,
+                     GL_LUMINANCE, texture->potWidth, texture->potHeight, 0,
+                     GL_LUMINANCE, GL_UNSIGNED_BYTE, data);
+@@ -289,8 +324,19 @@ status_t TextureManager::loadTexture(Texture* texture,
+                     0, bounds.top, t.width, bounds.height(),
+                     GL_RGBA, GL_UNSIGNED_BYTE,
+                     t.data + bounds.top*t.stride*4);
++        } else if (t.format == HAL_PIXEL_FORMAT_YCrCb_420_SP) {
++            // NV21: full-frame software conversion to RGB565
++            uint16_t* rgb = (uint16_t*)malloc((size_t)t.width * t.height * 2);
++            if (rgb) {
++                glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
++                convertNV21toRGB565(t.data, rgb, t.width, t.height, t.stride);
++                glTexSubImage2D(GL_TEXTURE_2D, 0,
++                        0, 0, t.width, t.height,
++                        GL_RGB, GL_UNSIGNED_SHORT_5_6_5, rgb);
++                free(rgb);
++            }
+         } else if (isSupportedYuvFormat(t.format)) {
+-            // just show the Y plane of YUV buffers
++            // just show the Y plane of other YUV buffers
+             glTexSubImage2D(GL_TEXTURE_2D, 0,
+                     0, bounds.top, t.width, bounds.height(),
+                     GL_LUMINANCE, GL_UNSIGNED_BYTE,

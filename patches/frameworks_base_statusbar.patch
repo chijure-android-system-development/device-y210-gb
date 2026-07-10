@@ -1,0 +1,86 @@
+diff --git a/services/java/com/android/server/StatusBarManagerService.java b/services/java/com/android/server/StatusBarManagerService.java
+index 51144fc20cf..a3aaafe5097 100644
+--- a/services/java/com/android/server/StatusBarManagerService.java
++++ b/services/java/com/android/server/StatusBarManagerService.java
+@@ -181,6 +181,16 @@ public class StatusBarManagerService extends IStatusBarService.Stub
+                 throw new SecurityException("invalid status bar icon slot: " + slot);
+             }
+
++            // Skip if icon data is unchanged - avoids redundant mBar calls.
++            // Must check BEFORE updating mIcons: updating with default visible=false
++            // and then skipping mBar would desync mIcons vs mBar visibility state,
++            // causing setIconVisibility(false) to silently fail (ghost icons).
++            StatusBarIcon existing = mIcons.getIcon(index);
++            if (existing != null && existing.iconPackage.equals(iconPackage)
++                    && existing.iconId == iconId && existing.iconLevel == iconLevel) {
++                return;
++            }
++
+             StatusBarIcon icon = new StatusBarIcon(iconPackage, iconId, iconLevel);
+             //Slog.d(TAG, "setIcon slot=" + slot + " index=" + index + " icon=" + icon);
+             mIcons.setIcon(index, icon);
+diff --git a/libs/surfaceflinger_client/Surface.cpp b/libs/surfaceflinger_client/Surface.cpp
+index 017e94c94fa..94e14d809e0 100644
+--- a/libs/surfaceflinger_client/Surface.cpp
++++ b/libs/surfaceflinger_client/Surface.cpp
+@@ -25,6 +25,7 @@
+ #include <utils/threads.h>
+ #include <utils/CallStack.h>
+ #include <utils/Log.h>
++#include <cutils/properties.h>
+
+ #include <binder/IPCThreadState.h>
+ #include <binder/IMemory.h>
+@@ -949,11 +950,30 @@ status_t Surface::lock(SurfaceInfo* other, Region* dirtyIn, bool blocking)
+
+             // figure out if we can copy the frontbuffer back
+             const sp<GraphicBuffer>& frontBuffer(mPostedBuffer);
+-            const bool canCopyBack = (frontBuffer != 0 &&
++            bool canCopyBack = (frontBuffer != 0 &&
+                     backBuffer->width  == frontBuffer->width &&
+                     backBuffer->height == frontBuffer->height &&
+                     backBuffer->format == frontBuffer->format &&
+                     !(mFlags & ISurfaceComposer::eDestroyBackbuffer));
++            // Workaround: copy-back leaves ghost pixels on status-bar-sized
++            // surfaces (320x25). The status bar background drawable has alpha=0
++            // transparent areas; without copy-back those expose stale buffer
++            // content from two frames ago.  Fix: disable copy-back AND zero the
++            // back buffer so transparent pixels render as black, not as ghosts.
++            // Controlled by debug.surface.sb_nocopyback (default "1" = active).
++            bool sbNoCopyback = false;
++            if (backBuffer->height <= 26) {
++                static int sNoCopyback = -1;
++                if (sNoCopyback < 0) {
++                    char prop[PROPERTY_VALUE_MAX];
++                    property_get("debug.surface.sb_nocopyback", prop, "1");
++                    sNoCopyback = atoi(prop);
++                }
++                if (sNoCopyback) {
++                    canCopyBack = false;
++                    sbNoCopyback = true;
++                }
++            }
+
+             // the dirty region we report to surfaceflinger is the one
+             // given by the user (as opposed to the one *we* return to the
+@@ -979,10 +999,18 @@ status_t Surface::lock(SurfaceInfo* other, Region* dirtyIn, bool blocking)
+             status_t res = backBuffer->lock(
+                     GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN,
+                     newDirtyRegion.bounds(), &vaddr);
+-            
+-            LOGW_IF(res, "failed locking buffer (handle = %p)", 
++
++            LOGW_IF(res, "failed locking buffer (handle = %p)",
+                     backBuffer->handle);
+
++            // Zero the back buffer so transparent drawable areas show black
++            // instead of stale content from two frames ago.
++            if (res == NO_ERROR && sbNoCopyback && vaddr) {
++                memset(vaddr, 0,
++                       backBuffer->stride * backBuffer->height *
++                       bytesPerPixel(backBuffer->format));
++            }
++
+             mLockedBuffer = backBuffer;
+             other->w      = backBuffer->width;
+             other->h      = backBuffer->height;

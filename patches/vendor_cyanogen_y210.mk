@@ -1,8 +1,12 @@
 # Inherit AOSP device configuration for Y210.
 $(call inherit-product, device/huawei/y210/device_y210.mk)
 
-# Inherit some common cyanogenmod stuff.
-$(call inherit-product, vendor/cyanogen/products/common_full.mk)
+# Inherit some common cyanogenmod stuff. common_full_no_themes.mk se salta
+# themes.mk (paquetes de ejemplo Androidian/Cyanbread), build un poco mas
+# liviano. El motor de temas (ThemeManager/ThemeChooser/com.tmobile.themes)
+# sigue presente igual: vive en common.mk, compartido por todos los
+# dispositivos del arbol, no se puede sacar desde aca.
+$(call inherit-product, vendor/cyanogen/products/common_full_no_themes.mk)
 
 # Include GSM stuff
 $(call inherit-product, vendor/cyanogen/products/gsm.mk)
@@ -20,6 +24,13 @@ PRODUCT_MODEL := HUAWEI Y210-0151
 PRODUCT_MANUFACTURER := HUAWEI
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.build.product=msm7625a
+# Some Huawei/Qualcomm camera blobs key off ro.build.product; it must not be
+# generated as "y210" in build.prop (ro.* first-writer wins, so the plain
+# PRODUCT_PROPERTY_OVERRIDES line above alone is not enough — the auto
+# generated "ro.build.product=y210" line from buildinfo.sh comes first and
+# wins). Sin esto: "Unable to determine the target type" y crash en
+# QualcommCameraHardware/MMCameraDL al abrir la camara.
+PRODUCT_BUILD_PROP_OVERRIDES += BUILD_PRODUCT=msm7625a
 
 # RIL / Telephony
 PRODUCT_PROPERTY_OVERRIDES += \

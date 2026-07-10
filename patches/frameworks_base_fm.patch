@@ -1,0 +1,34 @@
+diff --git a/core/jni/Android.mk b/core/jni/Android.mk
+index bb01d9d1f48..8ded188d10b 100644
+--- a/core/jni/Android.mk
++++ b/core/jni/Android.mk
+@@ -152,16 +152,19 @@ ifeq ($(BOARD_HAVE_FM_RADIO),true)
+         BOARD_FM_DEVICE := $(BOARD_WLAN_DEVICE)
+     endif
+ 
+-    ifeq ($(BOARD_FM_DEVICE),si4709)
+-        LOCAL_SRC_FILES += android_hardware_fm_si4709.cpp
+-    endif
+-    ifeq ($(BOARD_FM_DEVICE),si4708)
+-        LOCAL_SRC_FILES += android_hardware_fm_si4708.cpp
+-    endif
+-    ifeq ($(BOARD_FM_DEVICE),bcm2049)
+-	LOCAL_CFLAGS += -DHAS_BCM20780
+-        LOCAL_SRC_FILES += android_hardware_fm_bcm4325.cpp
+-    endif
++	    ifeq ($(BOARD_FM_DEVICE),si4709)
++	        LOCAL_SRC_FILES += android_hardware_fm_si4709.cpp
++	    endif
++	    ifeq ($(BOARD_FM_DEVICE),si4708)
++	        LOCAL_SRC_FILES += android_hardware_fm_si4708.cpp
++	    endif
++	    ifeq ($(BOARD_FM_DEVICE),qcom)
++	        LOCAL_SRC_FILES += android_hardware_fm_qcom.cpp
++	    endif
++	    ifeq ($(BOARD_FM_DEVICE),bcm2049)
++		LOCAL_CFLAGS += -DHAS_BCM20780
++	        LOCAL_SRC_FILES += android_hardware_fm_bcm4325.cpp
++	    endif
+     ifeq ($(BOARD_FM_DEVICE),bcm4329)
+         LOCAL_SRC_FILES += android_hardware_fm_bcm4325.cpp
+     endif
