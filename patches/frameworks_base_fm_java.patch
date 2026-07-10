@@ -1,3 +1,59 @@
+diff --git a/core/java/android/hardware/fmradio/FmReceiver.java b/core/java/android/hardware/fmradio/FmReceiver.java
+index 3758ae8ee67..80aec14aed6 100644
+--- a/core/java/android/hardware/fmradio/FmReceiver.java
++++ b/core/java/android/hardware/fmradio/FmReceiver.java
+@@ -248,6 +248,18 @@ public class FmReceiver extends FmTransceiver
+    private static final int V4L2_CID_PRIVATE_BASE = 0x8000000;
+    private static final int V4L2_CID_PRIVATE_TAVARUA_SIGNAL_TH = V4L2_CID_PRIVATE_BASE + 8;
+    private static final int V4L2_CID_PRIVATE_TAVARUA_ANTENNA   = V4L2_CID_PRIVATE_BASE + 18;
++   // enum v4l2_cid_private_tavarua_t, kernel drivers/media/radio/radio-tavarua.c /
++   // include/media/tavarua.h: V4L2_CID_PRIVATE_TAVARUA_SET_AUDIO_PATH =
++   // V4L2_CID_PRIVATE_BASE + 0x29. Calls tavarua_set_audio_path(), which sets
++   // the AUDIORX_DIGITAL/AUDIORX_ANALOG/AUDIOTX bits in the chip's own
++   // AUDIOCTRL register -- never called from anywhere in this tree before
++   // 2026-07-09 (confirmed via grep across frameworks/base and packages/apps/FM).
++   // Without it, AUDIOCTRL's audio-output-enable bits stay at their power-on
++   // default regardless of how correctly the codec pin-switch (BTFMPinSwitching)
++   // and RPC routing (snd_set_device) are configured -- see docs/FM_NOTES.md.
++   private static final int V4L2_CID_PRIVATE_TAVARUA_SET_AUDIO_PATH = V4L2_CID_PRIVATE_BASE + 0x29;
++   private static final int FM_DIGITAL_PATH = 0;
++   private static final int FM_ANALOG_PATH  = 1;
+ 
+    private static final int TAVARUA_BUF_SRCH_LIST=0;
+    private static final int TAVARUA_BUF_EVENTS=1;
+@@ -1656,6 +1668,32 @@ public class FmReceiver extends FmTransceiver
+        return false;
+    }
+ 
++   /*==============================================================
++   FUNCTION:  setAudioPath
++   ==============================================================*/
++   /**
++    *    Enables the FM chip's own digital or analog audio output path
++    *    (AUDIOCTRL register, see V4L2_CID_PRIVATE_TAVARUA_SET_AUDIO_PATH
++    *    in the kernel driver). Distinct from -- and in addition to --
++    *    the codec-side pin switching and RPC device routing, which only
++    *    select where the chip's audio *would* go, not whether the chip
++    *    is actually outputting it.
++    *
++    *    @param digital true for the digital (I2S) path, false for analog.
++    *
++    *    @return true/false
++    */
++   public boolean setAudioPath(boolean digital)
++   {
++       int path = digital ? FM_DIGITAL_PATH : FM_ANALOG_PATH;
++       int re = FmReceiverJNI.setControlNative (sFd, V4L2_CID_PRIVATE_TAVARUA_SET_AUDIO_PATH, path);
++
++       if (re == 0)
++         return true;
++
++       return false;
++   }
++
+    /*==============================================================
+    FUNCTION:  getRawRDS
+    ==============================================================*/
 diff --git a/core/java/android/hardware/fmradio/FmRxControls.java b/core/java/android/hardware/fmradio/FmRxControls.java
 index b71aa578798..c6aaef602e8 100644
 --- a/core/java/android/hardware/fmradio/FmRxControls.java

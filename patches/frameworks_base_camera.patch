@@ -149,7 +149,7 @@ index 703f2a9c5fa..f60ca493833 100644
  const char CameraParameters::PIXEL_FORMAT_RGB565[] = "rgb565";
  const char CameraParameters::PIXEL_FORMAT_JPEG[] = "jpeg";
 diff --git a/media/libmediaplayerservice/StagefrightRecorder.cpp b/media/libmediaplayerservice/StagefrightRecorder.cpp
-index e0ba2902ff0..f2239977c5e 100755
+index e0ba2902ff0..c7c2a1acfee 100755
 --- a/media/libmediaplayerservice/StagefrightRecorder.cpp
 +++ b/media/libmediaplayerservice/StagefrightRecorder.cpp
 @@ -1033,8 +1033,11 @@ status_t StagefrightRecorder::setupCameraSource() {

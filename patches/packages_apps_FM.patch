@@ -123,7 +123,7 @@ index f5ffb0a..aeb09ed 100644
  
      private void disableRadio() {
 diff --git a/src/com/android/fm/radio/FMRadioService.java b/src/com/android/fm/radio/FMRadioService.java
-index b849063..b96467d 100644
+index b849063..fe07273 100644
 --- a/src/com/android/fm/radio/FMRadioService.java
 +++ b/src/com/android/fm/radio/FMRadioService.java
 @@ -30,6 +30,7 @@ import android.util.Log;
@@ -180,7 +180,7 @@ index b849063..b96467d 100644
              if (mReceiver == null) {
                  throw new RuntimeException("FmReceiver service not available!");
              }
-@@ -836,25 +858,19 @@ public class FMRadioService extends Service {
+@@ -836,25 +858,28 @@ public class FMRadioService extends Service {
              }
  
              if (bStatus == true) {
@@ -210,6 +210,15 @@ index b849063..b96467d 100644
 +                // found. Driver default is often STRONG (-111 dBm) which misses most
 +                // stations in areas with average signal strength.
 +                mReceiver.setSignalThreshold(FmReceiver.FM_RX_SIGNAL_STRENGTH_VERY_WEAK);
++                // Enables the chip's own digital audio output (AUDIOCTRL
++                // register) -- never called anywhere in this tree before
++                // 2026-07-09. Distinct from codec pin-switching/RPC
++                // routing, which only select where the chip's audio would
++                // go, not whether the chip is emitting it at all. Unlike
++                // setInternalAntenna/setLowPowerMode (skipped above),
++                // this control's kernel handler does not wait on a chip
++                // interrupt, so it's safe to call synchronously here.
++                mReceiver.setAudioPath(true /* digital */);
 +                startFM();
 +                // Skip blocking JNI calls (registerRdsGroupProcessing, enableAutoAF,
 +                // setLowPowerMode, setInternalAntenna) — they wait for chip interrupts
@@ -218,6 +227,29 @@ index b849063..b96467d 100644
                  bStatus = true;
              } else {
                  stop();
+@@ -1424,6 +1449,22 @@ public class FMRadioService extends Service {
+             } catch (RemoteException e) {
+                 e.printStackTrace();
+             }
++            // Diagnostic: does the tuner report real signal strength at this
++            // frequency, or a fixed/noise-floor value regardless of tuning?
++            // No event in this build calls FmReceiver.getRssi() anywhere, so
++            // log it directly here and again after the chip has had a moment
++            // to settle. See docs/FM_NOTES.md "hipotesis pendientes" #1.
++            if (mReceiver != null) {
++                Log.i(LOGTAG, "RSSI check @ " + frequency + ": immediate=" + mReceiver.getRssi());
++                final int freqForLog = frequency;
++                mHandler.postDelayed(new Runnable() {
++                    public void run() {
++                        if (mReceiver != null) {
++                            Log.i(LOGTAG, "RSSI check @ " + freqForLog + ": +1500ms=" + mReceiver.getRssi());
++                        }
++                    }
++                }, 1500);
++            }
+         }
+ 
+         public void FmRxEvStationParameters() {
 diff --git a/src/com/android/fm/radio/FmSharedPreferences.java b/src/com/android/fm/radio/FmSharedPreferences.java
 index 6843b53..b4fc714 100644
 --- a/src/com/android/fm/radio/FmSharedPreferences.java
