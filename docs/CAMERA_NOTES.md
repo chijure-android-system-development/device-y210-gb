@@ -29,6 +29,59 @@ El blob `libcamera.y210.so` detecta el target leyendo `ro.build.product` y compa
 con strings internos (`msm7625a`, `msm7627a`, etc.). Si lee `y210` muere con
 `Unable to determine the target type`.
 
+## Regresión: BUILD_PRODUCT perdido en revert/apply-patches (2026-07-06)
+
+Síntoma: cámara volvió a crashear (`Unable to determine the target type. Camera
+will not work` → `createInstance: startCamera failed!` → SIGSEGV en el
+destructor `QualcommCameraHardware::MMCameraDL::~MMCameraDL()`, pc=0, tumba
+`mediaserver` entero). Sobrevivió incluso a un `wipe data` completo — no era
+estado persistido en `/data`, era config de build.
+
+Causa real: la línea que realmente arregla esto (ver "Props requeridos" arriba)
+**no es** `PRODUCT_PROPERTY_OVERRIDES += ro.build.product=msm7625a` sola — esa
+queda pisada por la línea auto-generada `ro.build.product=y210` de
+`build/tools/buildinfo.sh` (las properties `ro.*` son "primer escritor gana",
+y la auto-generada sale primero en `build.prop`). Lo que realmente funciona es:
+
+```makefile
+PRODUCT_BUILD_PROP_OVERRIDES += BUILD_PRODUCT=msm7625a
+```
+
+Esto alimenta directo la variable de shell `$BUILD_PRODUCT` que
+`buildinfo.sh` chequea (`if [ -n "$BUILD_PRODUCT" ]`), generando
+`ro.build.product=msm7625a` como única línea, sin conflicto de orden.
+
+Esa línea `PRODUCT_BUILD_PROP_OVERRIDES` existía como edición manual directa en
+`vendor/cyanogen/products/cyanogen_y210.mk`, pero **nunca se guardó** en la
+plantilla `device/huawei/y210/patches/vendor_cyanogen_y210.mk` que usa
+`apply-patches.sh` para regenerar ese archivo. Al correr `revert-patches.sh`
+(para probar otro dispositivo en el mismo árbol) y después `apply-patches.sh`,
+la regeneración salió de la plantilla vieja — sin el fix — y la regresión
+volvió en silencio, sin ningún error de compilación que lo delatara.
+
+Fix aplicado (2026-07-06): se agregó `PRODUCT_BUILD_PROP_OVERRIDES +=
+BUILD_PRODUCT=msm7625a` en las tres copias del product mk:
+`device/huawei/y210/cyanogen_y210.mk`,
+`device/huawei/y210/patches/vendor_cyanogen_y210.mk` (la plantilla — importante
+que quede ahí para que sobreviva un futuro `apply-patches.sh`), y
+`vendor/cyanogen/products/cyanogen_y210.mk` (la copia activa).
+
+Nota de build: si tocás esta línea, `mka bacon` incremental **no** regenera
+`build.prop` solo (el target no depende de los `.mk` de producto, solo de
+`buildinfo.sh`) — hace falta `make installclean` antes de recompilar, o vas a
+seguir viendo el valor viejo aunque el `.mk` ya esté arreglado. Verificar
+siempre con:
+
+```bash
+grep -n "ro.build.product" out/target/product/y210/system/build.prop
+```
+
+La primera aparición debe decir `msm7625a`, no `y210`.
+
+Validación post-fix (equipo real, 2026-07-06): `mediaserver` no crashea al
+abrir Cámara (mismo PID antes/después), `startPreview exit rc=0
+previewRunning=1`, sin tombstones nuevos.
+
 ## Causa raíz resuelta: vtable misalignment
 
 El blob stock (`QualcommCameraHardware`) fue compilado contra una versión de

@@ -68,15 +68,18 @@ Actualizar esta tabla y el script cada vez que un bug se cierre con evidencia.
 ### Audio
 
 - Salida speaker: **OK** (ver `device/huawei/y210/AUDIO_NOTES.md`)
-- Salida auriculares: **Parcial** (funciona, pero volumen percibido bajo vs stock; prueba `persist.sys.headset-postproc` sin cambio)
+- Salida auriculares: **OK** (2026-07-09: el volumen bajo percibido era el jack físico sucio, no software — confirmado por el usuario; no es un bug real)
 - Micrófono (grabación): **OK** (ver `device/huawei/y210/AUDIO_NOTES.md`)
-- Llamadas (voz): **Parcial** (downlink OK; uplink/mic requiere validar tras el overlay de `send_mic_mute_to_AudioManager`)
+- Llamadas (voz): **OK** (downlink y uplink/mic confirmados con llamada real entre el CM7 y el Y210 stock el 2026-07-09 — logs muestran `mMicMute` pasando de 1→0 durante `mMode=2` (en llamada), y el otro participante confirmó escuchar audio del CM7)
 - Audio por Bluetooth (A2DP/SCO): **Pendiente**
-- Radio FM (app): **Parcial** (JNI OK, `/dev/radio0` abre, `hw.fm.init=1` confirmado; pendiente validar audio en auriculares)
+- Radio FM (app): **Parcial** (2026-07-06: sintonía RF real confirmada — firmware WCN2243 persiste entre sesiones vía `fminit` con traspaso de fd por socket (ya no se borra en cada open, ver fix de esa fecha), JNI ya usa ese fd compartido en vez de reabrir el device, tune exitoso, RSSI/eventos reales. Se probó exhaustivamente el lado audio: RPC digital y analógico, sesión `audmgr` HOST_PCM, `fm_qsoc_patches` modo `config_dac`, y una reimplementación por ingeniería inversa de `BTFMPinSwitching` (escritura I2C directa al códec/PMIC, decodificada desde el binario stock real). Con esta última, por primera vez sale *algo* además de silencio total (estática en modo digital, zumbido en modo analógico), pero ninguna combinación reproduce todavía la emisora real — el audio normal (no-FM) funciona bien en el mismo build, así que el defecto es específico de la ruta FM, no del codec/jack en general.
   - Fixes aplicados (2026-04-26): `FmRxControls.java` (V4L2_CID_AUDIO_MUTE boolean), `AudioHardware.cpp` routing → `SND_DEVICE_HEADSET` + abre `/dev/msm_fm`, `android_hardware_fm_qcom.cpp` controles privados best-effort + `spawnFmInit()` incondicional.
+  - Fix aplicado (2026-07-04): `fminit.c` reescrito como daemon persistente (nunca cierra `/dev/radio0`, pasa el fd por socket Unix con SCM_RIGHTS) — elimina el bug de firmware borrado en la segunda apertura del device. `AudioHardware.cpp` `doRouting()`: la rama de FM ahora chequea auricular real conectado antes de elegir endpoint (antes defaulteaba a auricular sin verificar).
+  - Fix aplicado (2026-07-06): `android_hardware_fm_qcom.cpp` (`fmAcquireFdNative`) ahora se conecta al socket de `fminit` y usa el fd compartido (con reintentos) en vez de un `open()` propio — el `open()` directo re-disparaba el init de hardware del driver y borraba el firmware recién cargado.
+  - Experimental (2026-07-06, sin confirmar): `AudioHardware.cpp` gana `run_fm_dac_config()` (`fm_qsoc_patches ... 3 ...`, modo "config_dac" del script stock) y `run_btfm_pin_switch()` (escritura I2C reversada del stock, property `hw.fm.pinSwitchMode`). Ninguno de los dos por sí solo resuelve el audio; documentado en detalle en FM_NOTES.md.
   - `init.qcom.fm.sh` usa `exec 3</dev/radio0; sleep 1` antes de `fm_qsoc_patches` para evitar race condition IRQ tavarua (XFR=98).
   - Validar con `adb shell getprop hw.fm.init` (esperado `1`) y `adb shell getprop hw.fm.version` (esperado `67240453`).
-  - Ver `device/huawei/y210/FM_NOTES.md` para diagnóstico completo.
+  - Ver [FM_NOTES.md](FM_NOTES.md) para el diagnóstico completo (incluye desensamblado del stock y la matriz de combinaciones de audio probadas).
 
 ### Wi‑Fi
 
@@ -89,7 +92,9 @@ Actualizar esta tabla y el script cada vez que un bug se cierre con evidencia.
 
 - Encender desde UI: **OK** (ver `device/huawei/y210/BLUETOOTH_NOTES.md`)
 - `hci0 UP RUNNING`: **OK**
-- Pairing + audio: **Pendiente**
+- Pairing: **OK** (2026-07-09: emparejado con Y210 stock real, bond state 10→11→12 completo, UUIDs descubiertos correctamente)
+- Transferencia de archivos (Object Push): **OK** (2026-07-09: foto JPEG de 128440 bytes enviada completa por Bluetooth hacia el Y210 stock; primer intento falló por falta de SD en el receptor, no por bug — confirmado con SD puesta)
+- Audio (A2DP/HSP/HFP): **Pendiente** (requiere auriculares/parlante Bluetooth real para probar, no disponibles en esta sesión)
 
 ### Sensores
 

@@ -174,3 +174,78 @@ Validación (post-boot)
 - Prueba conectividad:
   - `adb shell ping -c 2 -w 8 google.com`
   - Nota: algunos carriers filtran ICMP a `8.8.8.8`, no usarlo como prueba unica.
+
+Clase RIL Java: HuaweiQualcommRIL nunca se usaba (fix 2026-07-06)
+------------------------------------------------------------------
+
+Síntoma:
+
+- `rild` y el registro de red funcionan bien (confirmado en equipo real:
+  `mServiceState=0 home Claro Claro 71610 HSPA`), pero `gsm.sim.state` queda
+  siempre en `UNKNOWN`, y `gsm.sim.operator.numeric`/`.alpha` quedan vacíos
+  (rompía el llenado automático de APN y el filtro de la lista de APNs en
+  Settings, ver `packages_apps_Settings.patch`).
+
+Causa real (root cause, confirmada leyendo `PhoneFactory.java`):
+
+- `cyanogen_y210.mk` fija `ro.telephony.ril_class=HuaweiQualcommRIL`, pero
+  `PhoneFactory.java` (el que decide qué clase Java de RIL instanciar) es una
+  cadena fija de `if/else` con strings literales (`"samsung"`, `"htc"`,
+  `"lgestar"`, `"semc"`, `"lgeqcom"`, `"mototegra"`, etc.) — **no existía
+  ninguna rama para `"HuaweiQualcommRIL"`**, así que caía al `else` final:
+  `new RIL(...)`, la clase genérica.
+- Ya existía además un archivo real
+  `device/huawei/y210/ril/telephony/java/com/android/internal/telephony/HuaweiQualcommRIL.java`
+  (idéntico al de `device/huawei/u8815-gingerbread/ril/...`, ambos claramente
+  copiados de un device tree Huawei real de CyanogenMod 2011) con overrides de
+  protocolo específicos de Huawei (manejo de `mAid` en `getIMSI`/`iccIO`/
+  `queryFacilityLock`/`setFacilityLock`, `responseIccCardStatus` con layout de
+  parcel distinto al genérico). Ese archivo **ya se compilaba** dentro de
+  `framework.jar` gracias a `device_y210.mk:7`:
+  ```
+  FRAMEWORKS_BASE_SUBDIRS += ../../$(LOCAL_PATH)/ril/
+  ```
+  (mecanismo de `build/core/pathmap.mk` para que un device tree inyecte
+  fuentes Java al framework sin tocar `frameworks/base`). O sea: la clase
+  existía y se compilaba, pero **nunca se instanciaba** — quedó a medio
+  conectar, probablemente por la misma persona/sesión que dejó el `ril_class`
+  puesto sin terminar el resto.
+
+Fix aplicado:
+
+- Archivo: `frameworks/base/telephony/java/com/android/internal/telephony/PhoneFactory.java`
+- Se agregó la rama que faltaba, justo antes del `else` final:
+  ```java
+  } else if ("HuaweiQualcommRIL".equals(sRILClassname)) {
+      Log.i(LOG_TAG, "Using Huawei Qualcomm RIL");
+      sCommandsInterface = new HuaweiQualcommRIL(context, networkMode, cdmaSubscription);
+  } else {
+  ```
+- **No** se tocó `HuaweiQualcommRIL.java` ni `QualcommNoSimReadyRIL.java` (la
+  clase padre) — quedan tal cual estaban en el device tree.
+- Capturado en `device/huawei/y210/patches/frameworks_base_ril_class.patch`
+  (3 líneas, verificado que aplica limpio sobre el árbol base) y agregado a
+  `apply-patches.sh`.
+
+Resultado validado en equipo real:
+
+- Confirmado que la clase queda enlazada en el build (`strings` sobre el
+  `classes.dex` de `framework.jar` muestra la referencia directa a
+  `Lcom/android/internal/telephony/HuaweiQualcommRIL;`).
+- Arranque estable, sin crashes de `system_server`/`phone`.
+- Registro de red sigue funcionando igual de bien: `mServiceState=0 home
+  Claro Claro 71610 HSPA`.
+
+Pendiente (no resuelto todavía):
+
+- `gsm.sim.state` **sigue en `UNKNOWN`** después del fix. `QualcommNoSimReadyRIL`
+  ajusta el `RadioState` interno del RIL (a partir de
+  `RIL_UNSOL_RESPONSE_RADIO_STATE_CHANGED`), pero esa property la actualiza
+  la máquina de estados de `IccCard`/`SimCard` en otra capa, que no toca esta
+  clase. Siguiente paso: revisar `IccCard.java`/`SIMRecords.java` (o
+  equivalente en este árbol) para encontrar qué evento/unsolicited necesita
+  llegar bien para que esa máquina de estados marque `SIM_STATE_READY`.
+- Validación rápida sugerida para la próxima sesión:
+  - `adb logcat -b radio -d | grep -i "IccCard\\|SIM_STATE\\|CommandsInterface.RadioState"`
+  - Revisar si `QualcommNoSimReadyRIL.IccHandler` (el hilo interno que
+    consulta el estado del ICC) realmente se dispara y con qué resultado.

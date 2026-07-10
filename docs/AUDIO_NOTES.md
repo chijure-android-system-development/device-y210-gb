@@ -85,6 +85,55 @@ adb shell stop media; adb shell start media
 
 Status: initial on-device test did not change perceived loudness vs stock yet.
 
+**2026-07-06 follow-up — post-proc chain ruled out entirely as the cause:**
+
+Retested systematically with a real Y210 stock dump available for comparison
+(`/media/chijure/Datos/Desarrollo_Android/y210/ori y210/system`):
+
+- Confirmed stock's `AudioFilter_%s.csv` (device-specific, opened before the
+  generic file — stock's `libaudio.so` strings show `/system/etc/AudioFilter_%s.csv`)
+  has the SAME A3/C3/D3 (headset IIR/EQ/MBADRC) coefficients as the generic
+  file we were already using. Not the cause (separate real bug found and
+  fixed for the *speaker* filters A1/D1, unrelated to headset volume — see
+  FM_NOTES.md 2026-07-06 for that fix).
+- Tested `persist.sys.headset-postproc=0x7` (ADRC+EQ+IIR, no MBADRC — a
+  combination never tried before, in between the existing `lite`/`full`
+  presets): **no change in perceived loudness.**
+- Tested `full` (ADRC+EQ+IIR+MBADRC, matching the hypothesis that stock runs
+  MBADRC on by default and that's the real loudness difference): **no
+  change in perceived loudness either.**
+- Confirmed via disassembly of stock's `libaudio.so` that `AudioStreamOutMSM72xx`
+  does **not** export a `setVolume()` method — same as our implementation.
+  Media/music volume is applied entirely as AudioFlinger *software* gain
+  upstream of the HAL on both stock and CM7 (same generic frameworks/base
+  code path in both) — this architecture is not the difference either.
+
+**Conclusion:** the entire QDSP5 AUDPP post-processing chain (MBADRC/ADRC/EQ/IIR)
+demonstrably has **no effect** on perceived headset loudness in this build —
+ruled out completely, not just "lite" vs "full". The real cause is
+somewhere else: most likely a headphone amplifier analog gain register
+(PMIC/codec HPH_PA gain) set once at a lower level (kernel driver default,
+or a userspace RPC/ADIE config call outside `AudioHardware.cpp` — e.g.
+`libsnd.so`'s `snd_adie_svc_config_adie_block`, present on stock, NOT linked
+by stock's own `libaudio.so` per `readelf -d`, so it would have to be called
+from somewhere else entirely, not yet identified) — or a difference at the
+kernel/board-config level (e.g. a `msm_snd`/codec driver default gain value)
+that never goes through any of the userspace code paths compared so far.
+Reverted to `lite` (the known-safe default) after these negative results.
+Next step, if resumed: look for gain-related ioctl/RPC calls made *outside*
+`AudioHardware.cpp`/`AudioPolicyManager` entirely (kernel codec driver
+defaults, or another userspace daemon), since everything reachable from the
+audio HAL itself has now been ruled out.
+
+**2026-07-06, RESUELTO — era hardware, no bug de CM7:** el usuario confirmó
+tras probar en la unidad física: el parlante suena bajito por desgaste de
+uso, y el jack de auriculares necesita presionarse bien para hacer buen
+contacto. No es una regresión de CM7 ni algo relacionado a
+MBADRC/ADRC/EQ/AudioFilter — todo lo de esa sección de arriba (post-proc,
+`persist.sys.headset-postproc`) queda como referencia por si en el futuro
+se sospecha algo similar, pero **no perseguir este síntoma de nuevo como
+bug de software** salvo que cambie la evidencia.
+
 FM Radio bring-up note
 ----------------------
 
