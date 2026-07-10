@@ -30,6 +30,8 @@
 #include <sys/stat.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <sys/wait.h>
+#include <linux/i2c.h>
 
 // hardware specific functions
 #include "AudioHardware.h"
@@ -151,10 +153,20 @@ AudioHardware::AudioHardware() {
     mFmVolume = 0;
     fmfd = -1;
     {
-        // Y210/WCN2243: FM analog path (RXOUT → codec AUX-in → headset).
-        // The digital I2S path (WCN2243 → MSM I2S) is unreliable in ROM mode.
-        mFmIsAnalog = true;
-        LOGI("FM audio path: analog (hardcoded for Y210/WCN2243)");
+        // Y210/WCN2243: which physical path (digital I2S vs analog RXOUT)
+        // this board actually wires up has never been confirmed against
+        // real hardware -- the digital assumption below was carried over
+        // from generic msm7627a documentation. Digital I2S now runs
+        // end-to-end with no RPC/driver errors (fminit keeps the firmware
+        // loaded across opens) and still produces no audible sound, so
+        // treat this as an open question rather than settled: default to
+        // digital, but let hw.fm.isAnalog override for live A/B testing
+        // without a rebuild.
+        char isAnalogProp[PROPERTY_VALUE_MAX];
+        property_get("hw.fm.isAnalog", isAnalogProp, "false");
+        mFmIsAnalog = (strcmp(isAnalogProp, "true") == 0 || strcmp(isAnalogProp, "1") == 0);
+        LOGI("FM audio path: %s (hw.fm.isAnalog=%s)",
+                mFmIsAnalog ? "analog RXOUT" : "digital I2S", isAnalogProp);
     }
 
     //Open the audio driver
@@ -791,13 +803,31 @@ int AudioHardware::get_audpp_filter(void)
     char *read_buf;
     char *next_str, *current_str;
     int csvfd;
-	static const char *const path =
-    		"/system/etc/AudioFilter.csv";
+    // Stock opens "/system/etc/AudioFilter_%s.csv" first (device-specific
+    // EQ/ADRC coefficients -- confirmed via strings on the real Huawei
+    // libaudio.so) and falls back to the generic file. We were always
+    // reading the generic one, which has different A1 (speaker IIR) and D1
+    // (speaker MBADRC) coefficients than the real Y210-specific file
+    // (device/huawei/y210/prebuilt/system/etc/AudioFilter_MSM7225A_Y210.csv,
+    // copied verbatim from stock). Headset filters (A3/C3/D3, what FM
+    // routes through) were already identical between the two, so this
+    // doesn't explain the FM silence -- it only affects speaker EQ quality.
+    static const char *const path_device_specific =
+            "/system/etc/AudioFilter_MSM7225A_Y210.csv";
+    static const char *const path_generic =
+            "/system/etc/AudioFilter.csv";
+    const char *path = path_device_specific;
 
     LOGI("get_audpp_filter");
 
     //Open the acoustic filters file
     csvfd = open(path, O_RDONLY);
+    if (csvfd < 0) {
+        LOGW("failed to open %s: %s (%d), falling back to generic",
+             path, strerror(errno), errno);
+        path = path_generic;
+        csvfd = open(path, O_RDONLY);
+    }
     if (csvfd < 0) {
         //failed to open normal acoustic file ...
         LOGE("failed to open AUDIO_NORMAL_FILTER %s: %s (%d).",
@@ -1515,15 +1545,286 @@ status_t AudioHardware::setMasterVolume(float v)
 }
 
 #ifdef HAVE_FM_RADIO
+// bionic's linux/i2c.h has struct i2c_msg + I2C_RDWR but not the i2c-dev.h
+// ioctl payload struct (i2c-dev.h isn't shipped) -- declared here to match
+// the real kernel header (kernel-c660-src/include/linux/i2c-dev.h).
+struct i2c_rdwr_ioctl_data {
+    struct i2c_msg *msgs;
+    uint32_t nmsgs;
+};
+#ifndef I2C_RDWR
+#define I2C_RDWR 0x0707
+#endif
+
+static status_t i2c1_write_reg(int fd, uint8_t reg, uint8_t value)
+{
+    uint8_t buf[2] = { reg, value };
+    struct i2c_msg msg;
+    msg.addr = 0x0c;
+    msg.flags = 0;
+    msg.len = 2;
+    msg.buf = buf;
+
+    struct i2c_rdwr_ioctl_data data;
+    data.msgs = &msg;
+    data.nmsgs = 1;
+
+    if (ioctl(fd, I2C_RDWR, &data) < 0) {
+        return -errno;
+    }
+    return NO_ERROR;
+}
+
+// Read-back verification (2026-07-09): the write above reports success at
+// the ioctl/ACK level, but that only means the Marimba chip accepted the
+// transaction -- it doesn't prove the value actually stuck (vs. being
+// silently reset by something else, e.g. the kernel's own
+// marimba_write_bit_mask() calls in radio-tavarua.c touching a different
+// register through the proper marimba-core i2c_client while we write the
+// same chip via a raw /dev/i2c-1 open() that bypasses that driver
+// entirely). Mirrors marimba_read() from HardwarePinSwitching.c.
+static status_t i2c1_read_reg(int fd, uint8_t reg, uint8_t *value)
+{
+    struct i2c_msg msgs[2];
+    msgs[0].addr = 0x0c;
+    msgs[0].flags = 0;
+    msgs[0].len = 1;
+    msgs[0].buf = &reg;
+    msgs[1].addr = 0x0c;
+    msgs[1].flags = I2C_M_RD;
+    msgs[1].len = 1;
+    msgs[1].buf = value;
+
+    struct i2c_rdwr_ioctl_data data;
+    data.msgs = msgs;
+    data.nmsgs = 2;
+
+    if (ioctl(fd, I2C_RDWR, &data) < 0) {
+        return -errno;
+    }
+    return NO_ERROR;
+}
+
+// Originally reverse-engineered from stock libaudio.so's switch_mode()/
+// "BTFMPinSwitching" by disassembly (2026-07-06). Confirmed against the
+// real CAF source on 2026-07-09: github.com/dzo/hardware_qcomm_media,
+// audio/msm7627a/HardwarePinSwitching.c -- byte-for-byte match (register
+// range, I2C slave 0x0c "Marimba", values 0x15="pin control"/tristate vs
+// 0x40="normal" mode). The chip's FM I2S pins (0x8e-0x90) and BT AUX-PCM
+// pins (0x88-0x8b) are mutually exclusive on this shared bus: exactly one
+// side is active (0x40) while the other is tristated (0x15).
+#define MODE_FM 0
+#define MODE_BTSCO 1
+
+// Per the reference: called AFTER do_route_audio_rpc() succeeds, not
+// before, and only on an actual transition into/out of an FM device (not
+// on every fmOn()/route call) -- see doAudioRouteOrMute() below.
+static status_t run_btfm_pin_switch(int mode)
+{
+    int fd = open("/dev/i2c-1", O_RDWR);
+    if (fd < 0) {
+        LOGE("BTFMPinSwitching: open /dev/i2c-1 failed: %s", strerror(errno));
+        return -errno;
+    }
+
+    // mode==MODE_FM: tristate BT pins, activate FM I2S pins.
+    // mode==MODE_BTSCO: tristate FM I2S pins, activate BT pins.
+    uint8_t btVal = (mode == MODE_FM) ? 0x15 : 0x40;
+    uint8_t fmVal = (mode == MODE_FM) ? 0x40 : 0x15;
+    status_t err = NO_ERROR;
+    for (uint8_t reg = 0x88; reg < 0x8c && err == NO_ERROR; reg++) {
+        err = i2c1_write_reg(fd, reg, btVal);
+    }
+    for (uint8_t reg = 0x8e; reg < 0x91 && err == NO_ERROR; reg++) {
+        err = i2c1_write_reg(fd, reg, fmVal);
+    }
+
+    // Read-back verification: does the write actually stick?
+    if (err == NO_ERROR) {
+        for (uint8_t reg = 0x88; reg < 0x8c; reg++) {
+            uint8_t readback = 0xFF;
+            if (i2c1_read_reg(fd, reg, &readback) == NO_ERROR) {
+                LOGI("BTFMPinSwitching: readback reg 0x%02x = 0x%02x (expected 0x%02x)",
+                        reg, readback, btVal);
+            } else {
+                LOGE("BTFMPinSwitching: readback reg 0x%02x failed: %s", reg, strerror(errno));
+            }
+        }
+        for (uint8_t reg = 0x8e; reg < 0x91; reg++) {
+            uint8_t readback = 0xFF;
+            if (i2c1_read_reg(fd, reg, &readback) == NO_ERROR) {
+                LOGI("BTFMPinSwitching: readback reg 0x%02x = 0x%02x (expected 0x%02x)",
+                        reg, readback, fmVal);
+            } else {
+                LOGE("BTFMPinSwitching: readback reg 0x%02x failed: %s", reg, strerror(errno));
+            }
+        }
+    }
+
+    close(fd);
+
+    if (err != NO_ERROR) {
+        LOGE("BTFMPinSwitching: switch mode failed with error:%d", err);
+    } else {
+        LOGI("BTFMPinSwitching: switch mode(%d) succeeded", mode);
+    }
+    return err;
+}
+
+// Live comparison (2026-07-09) against a real stock Y210 with working FM
+// audio: a full 0x00-0xff I2C dump of the Marimba chip (0x0c), taken with
+// FM genuinely playing on both a stock device and this CM7 device, showed
+// these 5 registers set on stock but left at 0x00 (untouched) on CM7. They
+// belong to the ADIE codec analog-path profile tables in the real kernel's
+// snddev_data_marimba.c/marimba_profile.h for SNDDEV_CAP_FM devices (e.g.
+// FM_HEADSET_STEREO_CLASS_D_LEGACY_OSR_64) -- i.e. the actual analog audio
+// output stage for FM. Normally the ARM9/DSP firmware applies these via the
+// snd_set_device RPC, invisible from Linux; writing them directly over
+// /dev/i2c-1 (already proven safe/working for the BT/FM pin-switch above)
+// bypasses that and applies the known-good end-state values directly.
+static status_t run_fm_audio_path_enable(void)
+{
+    int fd = open("/dev/i2c-1", O_RDWR);
+    if (fd < 0) {
+        LOGE("FmAudioPathEnable: open /dev/i2c-1 failed: %s", strerror(errno));
+        return -errno;
+    }
+
+    static const struct { uint8_t reg; uint8_t value; } regs[] = {
+        { 0x11, 0x0c },
+        { 0x13, 0x01 },
+        { 0x81, 0x00 },
+        { 0x82, 0x00 },
+        { 0xe6, 0x38 },
+        { 0xe7, 0x06 },
+        { 0xe9, 0x21 },
+    };
+
+    status_t err = NO_ERROR;
+    for (size_t i = 0; i < sizeof(regs) / sizeof(regs[0]) && err == NO_ERROR; i++) {
+        err = i2c1_write_reg(fd, regs[i].reg, regs[i].value);
+    }
+
+    for (size_t i = 0; i < sizeof(regs) / sizeof(regs[0]); i++) {
+        uint8_t readback = 0xFF;
+        if (i2c1_read_reg(fd, regs[i].reg, &readback) == NO_ERROR) {
+            LOGI("FmAudioPathEnable: readback reg 0x%02x = 0x%02x (expected 0x%02x)",
+                    regs[i].reg, readback, regs[i].value);
+        } else {
+            LOGE("FmAudioPathEnable: readback reg 0x%02x failed: %s", regs[i].reg, strerror(errno));
+        }
+    }
+
+    close(fd);
+
+    if (err != NO_ERROR) {
+        LOGE("FmAudioPathEnable: failed with error:%d", err);
+    } else {
+        LOGI("FmAudioPathEnable: succeeded");
+    }
+    return err;
+}
+
+// SND_DEVICE_FM_* are per-instance members (resolved at runtime from the
+// endpoint table in get_sound_endpoints()), not static constants, so this
+// needs the four values passed in rather than reading them off the class.
+static bool is_fm_snd_device(int32_t device, int32_t fmHeadset, int32_t fmSpeaker,
+        int32_t fmAnalogHeadset, int32_t fmAnalogSpeaker)
+{
+    return device == fmHeadset || device == fmSpeaker
+        || device == fmAnalogHeadset || device == fmAnalogSpeaker;
+}
+
+// Runs "fm_qsoc_patches <version> 3 <isAnalog>" -- the "config_dac" mode
+// from stock's init.qcom.fm.sh (case "config_dac") that this build never
+// invoked. Confirmed present in our own fm_qsoc_patches binary too (same
+// FmDacCodecAnalogConfig/FmDacCodecDigitalConfig/"In DAC config mode"
+// strings as the stock binary, just a different build/stripping -- md5
+// differs but behavior should match). Distinct from the mode-0 call
+// fminit makes at tuner power-up: mode 0 downloads RF calibration
+// firmware over I2C, mode 3 is understood to separately configure the
+// WCN2243's own DAC/audio-output pin -- the piece our RPC-only routing
+// (rpc_snd_set_device) never touches. Untested against real audio output
+// as of this change; verify on-device before trusting the "audible"
+// question.
+static status_t run_fm_dac_config(bool enable)
+{
+    char version[PROPERTY_VALUE_MAX];
+    property_get("hw.fm.version", version, "");
+    if (version[0] == '\0') {
+        return -EINVAL;
+    }
+
+    char isAnalogProp[PROPERTY_VALUE_MAX];
+    property_get("hw.fm.isAnalog", isAnalogProp, "false");
+    bool isAnalog = (strcmp(isAnalogProp, "true") == 0 || strcmp(isAnalogProp, "1") == 0);
+
+    char * const argv[] = {
+        (char *)"/system/bin/fm_qsoc_patches",
+        version,
+        (char *)"3",
+        (char *)(isAnalog ? "true" : "false"),
+        NULL
+    };
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        LOGE("fm_qsoc_patches config_dac: fork failed: %s", strerror(errno));
+        return -errno;
+    }
+    if (pid == 0) {
+        execv("/system/bin/fm_qsoc_patches", argv);
+        _exit(1);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        LOGI("fm_qsoc_patches config_dac(%s) succeeded", isAnalog ? "analog" : "digital");
+        return NO_ERROR;
+    }
+    LOGE("fm_qsoc_patches config_dac(%s) failed, exit status %d",
+            isAnalog ? "analog" : "digital", status);
+    return -EIO;
+}
+
 status_t AudioHardware::setFmOnOff(bool onoff)
 {
     mFmRadioEnabled = onoff;
     LOGI("setFmOnOff: FM %s", onoff ? "on" : "off");
-    // FM digital audio flows WCN2243 I2S → MSM7x27A → codec via
-    // rpc_snd_set_device(26/27). No HOST_PCM audmgr session needed —
+    // FM digital audio flows WCN2243 I2S -> MSM7x27A -> codec via
+    // rpc_snd_set_device(26/27). No HOST_PCM audmgr session needed --
     // opening /dev/msm_fm with RPC_AUD_DEF_METHOD_HOST_PCM was found to
     // conflict with the hardware I2S path (modem claims the headset DAC
     // for PCM instead of routing I2S FM data through it).
+    //
+    // Retried twice since, both times reverted as a genuine dead end, not
+    // a firmware/ordering issue:
+    // - 2026-07-04 (firmware already persistent): AUDIO_START succeeds,
+    //   no audio, adds a startup stutter.
+    // - 2026-07-06: dmesg from a real working stock Y210 showed
+    //   audmgr_enable() -> RPC READY -> RPC CODEC_CONFIG(volume=...)
+    //   happening BEFORE rpc_snd_set_device(26,0,0), so it was retried as
+    //   a *prerequisite* alongside config_dac/switch_mode (neither existed
+    //   in the 2026-07-04 test). Result: worse than without it -- what was
+    //   audible static (digital) or a power hum (analog) both went
+    //   completely silent with audmgr_enable() added. Confirms this
+    //   kernel's audmgr/audio_fm.c genuinely conflicts with the FM I2S/DAC
+    //   path rather than gating it -- not a missing step, an incompatible
+    //   one. See docs/FM_NOTES.md for the full comparison.
+    if (onoff) {
+        // config_dac isn't part of the dzo/hardware_qcomm_media reference
+        // (no fm_qsoc_patches call anywhere in it), but it IS part of
+        // stock's real behavior (confirmed via disassembly) and disabling
+        // it made no audible difference either way (tested 2026-07-09) --
+        // kept enabled since it matches confirmed stock behavior and is
+        // harmless.
+        run_fm_dac_config(true);
+        // BTFMPinSwitching (run_btfm_pin_switch) now happens from
+        // doAudioRouteOrMute(), after the RPC and gated on an actual
+        // device transition -- matching the CAF reference order. See
+        // that function and docs/FM_NOTES.md, 2026-07-09.
+    }
     return NO_ERROR;
 }
 #endif
@@ -1598,7 +1899,24 @@ status_t AudioHardware::doAudioRouteOrMute(int32_t device)
         // With mic_mute=1 the modem DSP does not open the FM I2S→codec path.
         LOGD("doAudioRouteOrMute() device %s, mMode %d, mMicMute %d, mBuiltinMicSelected %d, %s",
             get_sound_device(device), mMode, mMicMute, mBuiltinMicSelected, "audio circuit active");
-        return do_route_audio_rpc(device, mute, false);
+        status_t rc = do_route_audio_rpc(device, mute, false);
+        // Pin-switch AFTER the RPC (matches the CAF reference order), and
+        // only on an actual transition into the FM device (mCurSndDevice
+        // still holds the *previous* device here -- the caller updates it
+        // after this function returns).
+        if (is_fm_snd_device(device, SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER,
+                    SND_DEVICE_FM_ANALOG_HEADSET, SND_DEVICE_FM_ANALOG_SPEAKER)
+                && device != mCurSndDevice) {
+            run_btfm_pin_switch(MODE_FM);
+            run_fm_audio_path_enable();
+        }
+        return rc;
+    } else if (is_fm_snd_device(mCurSndDevice, SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER,
+                SND_DEVICE_FM_ANALOG_HEADSET, SND_DEVICE_FM_ANALOG_SPEAKER)
+            && !is_fm_snd_device(device, SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER,
+                SND_DEVICE_FM_ANALOG_HEADSET, SND_DEVICE_FM_ANALOG_SPEAKER)) {
+        // Leaving FM for a non-FM device: give the BT AUX-PCM pins back.
+        run_btfm_pin_switch(MODE_BTSCO);
     }
 #endif
     LOGD("doAudioRouteOrMute() device %s, mMode %d, mMicMute %d, mBuiltinMicSelected %d, %s",
@@ -1658,12 +1976,22 @@ status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
         if (mFmRadioEnabled) {
             int fmSpk = mFmIsAnalog ? SND_DEVICE_FM_ANALOG_SPEAKER : SND_DEVICE_FM_SPEAKER;
             int fmHst = mFmIsAnalog ? SND_DEVICE_FM_ANALOG_HEADSET : SND_DEVICE_FM_HEADSET;
-            if (outputDevices & AudioSystem::DEVICE_OUT_SPEAKER) {
-                LOGI("Routing FM audio to Speaker (dev=%d)", fmSpk);
-                new_snd_device = fmSpk;
-            } else {
+            // Route to the headset endpoint only when a wired headset/
+            // headphone is actually detected (same bits normal playback
+            // checks below). Previously this only looked at
+            // DEVICE_OUT_SPEAKER and defaulted to the headset endpoint
+            // whenever it wasn't set -- so with no headset actually
+            // detected (outputDevices missing WIRED_HEADSET/HEADPHONE and
+            // SPEAKER both), FM silently routed to a headset jack nothing
+            // was electrically connected to, while regular media correctly
+            // fell back to the speaker.
+            if (outputDevices & (AudioSystem::DEVICE_OUT_WIRED_HEADSET |
+                                  AudioSystem::DEVICE_OUT_WIRED_HEADPHONE)) {
                 LOGI("Routing FM audio to Headset (dev=%d)", fmHst);
                 new_snd_device = fmHst;
+            } else {
+                LOGI("Routing FM audio to Speaker (dev=%d)", fmSpk);
+                new_snd_device = fmSpk;
             }
             new_post_proc_feature_mask = (EQ_ENABLE | RX_IIR_ENABLE);
             new_post_proc_feature_mask &= (MBADRC_DISABLE | ADRC_DISABLE);
