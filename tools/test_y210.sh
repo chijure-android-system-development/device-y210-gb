@@ -144,7 +144,15 @@ if section audio "AUDIO"; then
     if adb_sh "service list 2>/dev/null" | grep -q "media.audio_flinger"; then
         pass "AudioFlinger registrado en ServiceManager"
     else fail "AudioFlinger" "no en service list"; fi
-    chk_prop "headset-postproc=lite"  persist.sys.headset-postproc  "lite"
+    # AudioHardware.cpp hace property_get(..., "lite") — vacío es válido y
+    # equivale a "lite" por el default del propio código, no solo un valor
+    # explícito seteado a mano (ver docs/AUDIO_NOTES.md).
+    _hpp=$(adb_sh getprop persist.sys.headset-postproc)
+    if [[ -z "$_hpp" || "$_hpp" == "lite" ]]; then
+        pass "headset-postproc (efectivo: lite$([ -z "$_hpp" ] && echo ' — default de código'))"
+    else
+        pass "headset-postproc=$_hpp (override manual, no es un fallo)"
+    fi
     manual "Speaker"      "reproduce sonido — verifica volumen por altavoz"
     manual "Auriculares"  "conecta auriculares — verifica sonido y volumen"
     manual "Micrófono"    "graba nota de voz — reproduce y verifica"
@@ -231,7 +239,10 @@ if section camera "CÁMARA"; then
     if adb_sh "ps" | grep -v grep | grep -q "android.camera"; then
         pass "App Camera en ejecución"
     else fail "App Camera" "proceso no encontrado tras 4s"; fi
-    _prev=$(adb_sh "logcat -d 2>/dev/null" | grep -c "startPreview.*rc=0" 2>/dev/null || echo 0)
+    # grep -c ya imprime "0" y no encuentra coincidencias (exit 1); el
+    # "|| echo 0" agregaba una SEGUNDA línea "0" en ese caso, dejando
+    # _prev="0\n0" y rompiendo la comparación numérica de abajo.
+    _prev=$(adb_sh "logcat -d 2>/dev/null" | grep -c "startPreview.*rc=0")
     if [[ "$_prev" -gt 0 ]]; then pass "startPreview rc=0 en logcat"; \
     else skip "startPreview logcat" "no hay log reciente (OK si ya estaba corriendo)"; fi
     # am kill/force-stop no existen en Gingerbread 2.3 — usar pkill

@@ -29,7 +29,8 @@ Cuando algo está en **Parcial/No/Pendiente**, adjuntar logs usando
 
 ## Matriz (inventario + estado)
 
-Estado actualizado 2026-05-31. Validado con `test_y210.sh --fast`: 54 PASS / 0 FAIL.
+Estado actualizado 2026-07-10. Validado en un flasheo limpio (build desde cero)
+con `test_y210.sh` completo: 54 PASS / 0 FAIL / 3 SKIP / 26 MANUAL.
 Actualizar esta tabla y el script cada vez que un bug se cierre con evidencia.
 
 ### Arranque / sistema
@@ -71,7 +72,7 @@ Actualizar esta tabla y el script cada vez que un bug se cierre con evidencia.
 - Salida auriculares: **OK** (2026-07-09: el volumen bajo percibido era el jack físico sucio, no software — confirmado por el usuario; no es un bug real)
 - Micrófono (grabación): **OK** (ver `device/huawei/y210/AUDIO_NOTES.md`)
 - Llamadas (voz): **OK** (downlink y uplink/mic confirmados con llamada real entre el CM7 y el Y210 stock el 2026-07-09 — logs muestran `mMicMute` pasando de 1→0 durante `mMode=2` (en llamada), y el otro participante confirmó escuchar audio del CM7)
-- Audio por Bluetooth (A2DP/SCO): **Pendiente**
+- Audio por Bluetooth (A2DP): **OK** (ver sección Bluetooth — validado 2026-07-10 con auriculares reales)
 - Radio FM (app): **Parcial** (2026-07-06: sintonía RF real confirmada — firmware WCN2243 persiste entre sesiones vía `fminit` con traspaso de fd por socket (ya no se borra en cada open, ver fix de esa fecha), JNI ya usa ese fd compartido en vez de reabrir el device, tune exitoso, RSSI/eventos reales. Se probó exhaustivamente el lado audio: RPC digital y analógico, sesión `audmgr` HOST_PCM, `fm_qsoc_patches` modo `config_dac`, y una reimplementación por ingeniería inversa de `BTFMPinSwitching` (escritura I2C directa al códec/PMIC, decodificada desde el binario stock real). Con esta última, por primera vez sale *algo* además de silencio total (estática en modo digital, zumbido en modo analógico), pero ninguna combinación reproduce todavía la emisora real — el audio normal (no-FM) funciona bien en el mismo build, así que el defecto es específico de la ruta FM, no del codec/jack en general.
   - Fixes aplicados (2026-04-26): `FmRxControls.java` (V4L2_CID_AUDIO_MUTE boolean), `AudioHardware.cpp` routing → `SND_DEVICE_HEADSET` + abre `/dev/msm_fm`, `android_hardware_fm_qcom.cpp` controles privados best-effort + `spawnFmInit()` incondicional.
   - Fix aplicado (2026-07-04): `fminit.c` reescrito como daemon persistente (nunca cierra `/dev/radio0`, pasa el fd por socket Unix con SCM_RIGHTS) — elimina el bug de firmware borrado en la segunda apertura del device. `AudioHardware.cpp` `doRouting()`: la rama de FM ahora chequea auricular real conectado antes de elegir endpoint (antes defaulteaba a auricular sin verificar).
@@ -85,7 +86,7 @@ Actualizar esta tabla y el script cada vez que un bug se cierre con evidencia.
 
 - Encender desde UI: **OK** (validación histórica; ver `device/huawei/y210/WIFI_NOTES.md`)
 - Escaneo/Asociación/DHCP: **OK** (según `README.md`)
-- Validación post-flash limpio (sin staging manual): **Pendiente** (ver `device/huawei/y210/WIFI_NOTES.md`)
+- Validación post-flash limpio (sin staging manual): **OK** (2026-07-10: build desde cero + flasheo limpio, `test_y210.sh` completo dio 54 PASS / 0 FAIL / 3 SKIP / 26 MANUAL tras corregir 2 falsos negativos del propio script — ver más abajo)
 - Wi-Fi tethering (hotspot): **OK** (validado con 2 clientes simultáneos; NAT sobre rmnet0 funcionando)
 
 ### Bluetooth
@@ -94,7 +95,7 @@ Actualizar esta tabla y el script cada vez que un bug se cierre con evidencia.
 - `hci0 UP RUNNING`: **OK**
 - Pairing: **OK** (2026-07-09: emparejado con Y210 stock real, bond state 10→11→12 completo, UUIDs descubiertos correctamente)
 - Transferencia de archivos (Object Push): **OK** (2026-07-09: foto JPEG de 128440 bytes enviada completa por Bluetooth hacia el Y210 stock; primer intento falló por falta de SD en el receptor, no por bug — confirmado con SD puesta)
-- Audio (A2DP/HSP/HFP): **Pendiente** (requiere auriculares/parlante Bluetooth real para probar, no disponibles en esta sesión)
+- Audio (A2DP): **OK** (2026-07-10: emparejado con auriculares Bluetooth TWS reales, `Headset Service getState()=STATE_CONNECTED`, música reproducida desde `com.android.music` confirmada sonando por los auriculares)
 
 ### Sensores
 
@@ -111,7 +112,7 @@ Actualizar esta tabla y el script cada vez que un bug se cierre con evidencia.
 - XTRA (efemérides asistidas): **OK** (41 partes inyectadas al arranque)
 - NTP / UTC injection: **OK**
 - AGPS (UMTS SLP): **OK**
-- Fix real con satélites: **Pendiente** (requiere prueba al aire libre; motor RPC/XTRA/AGPS OK en logcat)
+- Fix real con satélites: **OK** (2026-07-10: prueba al aire libre en Lima, Perú — hasta 9 satélites detectados, coordenadas finales estables `-12.2944, -76.8588` vía `RPC_LOC_EVENT_PARSED_POSITION_REPORT`. Nota menor: las sentencias NMEA de texto (`loc_eng_report_nmea`) llegan vacías (solo `$`), no afecta al LocationManager pero cualquier app que dependa de NMEA crudo no tendría datos — no investigado más a fondo)
 
 Ver `device/huawei/y210/GPS_NOTES.md` para diagnóstico y bugs resueltos.
 
