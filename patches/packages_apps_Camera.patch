@@ -418,6 +418,28 @@ index da76c629..684585e9 100644
      }
  
      public static void upgradeLocalPreferences(SharedPreferences pref) {
+diff --git a/src/com/android/camera/MenuHelper.java b/src/com/android/camera/MenuHelper.java
+index b5ccf207..850d0b18 100644
+--- a/src/com/android/camera/MenuHelper.java
++++ b/src/com/android/camera/MenuHelper.java
+@@ -130,9 +130,14 @@ public class MenuHelper {
+         intent.addFlags(Intent.FLAG_ACTIVITY_FORWARD_RESULT);
+         intent.setClassName(activity.getPackageName(), className);
+ 
+-        // Keep the camera instance for a while.
+-        // This avoids re-opening the camera and saves time.
+-        CameraHolder.instance().keep();
++        // Do NOT keep() the camera instance across this switch: keep()
++        // forces reconnect() on the same hardware/pmem_adsp fd, and the
++        // msm7x27 PMEM allocator only allows SurfaceFlinger to mmap a given
++        // fd once -- a second registerBuffers() on that same fd from the
++        // new activity fails with "invalid heap" (-ENODEV) and the preview
++        // never displays. Letting the camera close and reopen gives the new
++        // activity a genuinely fresh fd. Costs ~100-500ms extra on the
++        // switch (see docs/CAMERA_NOTES.md).
+ 
+         try {
+             activity.startActivity(intent);
 diff --git a/src/com/android/camera/Util.java b/src/com/android/camera/Util.java
 index eb56efba..b5716747 100644
 --- a/src/com/android/camera/Util.java
