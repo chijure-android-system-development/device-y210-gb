@@ -61,6 +61,15 @@ remove_new frameworks/base/core/jni/android_hardware_fm_qcom.cpp
 # Base: 434f8777 (Camera : Updated Slovak translation)
 revert_commits packages/apps/Camera 434f8777
 
+# packages/apps/PackageInstaller — working tree
+revert_wt packages/apps/PackageInstaller packages_apps_PackageInstaller.patch
+
+# packages/apps/Tag — working tree
+revert_wt packages/apps/Tag packages_apps_Tag.patch
+
+# packages/apps/Contacts — working tree
+revert_wt packages/apps/Contacts packages_apps_Contacts.patch
+
 # packages/apps/FM — working tree
 revert_wt packages/apps/FM packages_apps_FM.patch
 

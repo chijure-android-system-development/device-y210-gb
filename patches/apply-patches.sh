@@ -86,8 +86,30 @@ apply frameworks/base                 frameworks_base_statusbar.patch
 #                   capturas reales del equipo, sesión 2026-07-13.
 apply frameworks/base                 frameworks_base_statusbar_expanded.patch
 
+# frameworks/base — title_bar_medium/portrait/shadow/tall (core/res): mismo
+#                   defecto de nine-patch que arriba, en todos los archivos
+#                   title_bar_* del framework (todas las densidades). Cada
+#                   uno verificado antes de tocarlo: contenido uniforme por
+#                   fila (solo degradado vertical, seguro ensanchar la región
+#                   de estiramiento horizontal). Visible en PackageInstaller,
+#                   probablemente en más apps que usan estos drawables
+#                   públicos. Sesión 2026-07-13.
+apply frameworks/base                 frameworks_base_titlebar_ninepatch.patch
+
 # packages/apps/Camera — adaptaciones Y210 al lifecycle de cámara
 apply packages/apps/Camera            packages_apps_Camera.patch
+
+# packages/apps/PackageInstaller — mismo defecto de nine-patch en su propia
+#                                   copia de title_bar_medium (ver arriba).
+apply packages/apps/PackageInstaller  packages_apps_PackageInstaller.patch
+
+# packages/apps/Tag — mismo defecto de nine-patch en su propia copia de
+#                      title_bar_medium (ver arriba).
+apply packages/apps/Tag               packages_apps_Tag.patch
+
+# packages/apps/Contacts — mismo defecto de nine-patch en su propia copia de
+#                           title_bar_shadow (ver arriba).
+apply packages/apps/Contacts          packages_apps_Contacts.patch
 
 # packages/apps/FM — app FM radio: config, FMRadio, FMRadioService, FmSharedPreferences
 apply packages/apps/FM                packages_apps_FM.patch
