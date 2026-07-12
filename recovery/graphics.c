@@ -104,18 +104,22 @@ static int get_framebuffer(GGLSurface *fb)
 
     fb++;
 
-    fb->version = sizeof(*fb);
-    fb->width = vi.xres;
-    fb->height = vi.yres;
-#ifdef BOARD_HAS_JANKY_BACKBUFFER
-    fb->stride = fi.line_length/2;
-    fb->data = (void*) (((unsigned) bits) + vi.yres * fi.line_length);
-#else
-    fb->stride = fi.line_length/2;
-    fb->data = (void*) (((unsigned) bits) + vi.yres * fi.line_length);
-#endif
-    fb->format = GGL_PIXEL_FORMAT_RGB_565;
-    memset(fb->data, 0, vi.yres * vi.xres * 2);
+    // Only the second frame's worth of memory is guaranteed mapped if
+    // smem_len actually covers two frames -- gr_single_buffer (see below)
+    // is always 1 on this device, so this second entry is never selected
+    // for drawing anyway; skip initializing it rather than risk writing
+    // past the mmap'd region on hardware where smem_len is smaller.
+    if (fi.smem_len >= (unsigned)(2 * vi.yres * fi.line_length)) {
+        fb->version = sizeof(*fb);
+        fb->width = vi.xres;
+        fb->height = vi.yres;
+        fb->stride = fi.line_length/2;
+        fb->data = (void*) (((unsigned) bits) + vi.yres * fi.line_length);
+        fb->format = GGL_PIXEL_FORMAT_RGB_565;
+        memset(fb->data, 0, vi.yres * vi.xres * 2);
+    } else {
+        *fb = fb[-1];
+    }
 
     return fd;
 }
