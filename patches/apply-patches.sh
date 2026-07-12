@@ -10,22 +10,31 @@ set -e
 
 PATCHES_DIR="$(dirname "$0")"
 CM7_ROOT="$(pwd)"
+CHECK_ONLY=1
 
 apply() {
     local project="$1"
     local patch="$2"
-    echo "  Aplicando $patch en $project..."
-    (cd "$CM7_ROOT/$project" && git apply "$CM7_ROOT/$PATCHES_DIR/$patch")
+    if [ "$CHECK_ONLY" = "1" ]; then
+        (cd "$CM7_ROOT/$project" && git apply --check "$CM7_ROOT/$PATCHES_DIR/$patch")
+    else
+        echo "  Aplicando $patch en $project..."
+        (cd "$CM7_ROOT/$project" && git apply "$CM7_ROOT/$PATCHES_DIR/$patch")
+    fi
 }
 
 copy_new() {
     local src="$1"
     local dst="$2"
-    echo "  Copiando archivo nuevo: $dst"
-    cp "$CM7_ROOT/$PATCHES_DIR/$src" "$CM7_ROOT/$dst"
+    if [ "$CHECK_ONLY" = "1" ]; then
+        [ -f "$CM7_ROOT/$PATCHES_DIR/$src" ]
+    else
+        echo "  Copiando archivo nuevo: $dst"
+        cp "$CM7_ROOT/$PATCHES_DIR/$src" "$CM7_ROOT/$dst"
+    fi
 }
 
-echo "=== Y210 patches ==="
+run_all() {
 
 # hardware/ril — libril: RIL_setRilSocketName stub, sanitizeRilString,
 #                         version negotiation flexible, unsol 1031-1037
@@ -81,5 +90,11 @@ apply packages/apps/Settings          packages_apps_Settings.patch
 # otros dispositivos del arbol sin dar ningun beneficio a y210)
 apply vendor/cyanogen                 vendor_cyanogen.patch
 copy_new vendor_cyanogen_y210.mk      vendor/cyanogen/products/cyanogen_y210.mk
+}
 
+echo "=== Verificando que todos los patches aplican limpio (sin tocar el árbol) ==="
+run_all
+echo "=== Verificación OK, aplicando ==="
+CHECK_ONLY=0
+run_all
 echo "=== Todos los patches aplicados ==="
