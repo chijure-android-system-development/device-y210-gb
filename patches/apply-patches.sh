@@ -76,6 +76,16 @@ apply frameworks/base                 frameworks_base_fm_java.patch
 #                   (copy-back + zero back buffer) en superficies <=26px alto
 apply frameworks/base                 frameworks_base_statusbar.patch
 
+# frameworks/base — panel expandido: title_bar_portrait.9.png tenía la región
+#                   de estiramiento horizontal degenerada (1px), dejaba una
+#                   franja gris fija a la izquierda de power_and_carrier;
+#                   status_bar_expanded.xml sin paddingLeft explícito heredaba
+#                   el padding del mismo nine-patch; StatusBarView.onLayout()
+#                   caía a ancho completo (tapando iconos) cuando la fecha no
+#                   podía "encajar" contra ningún ícono. Análisis completo con
+#                   capturas reales del equipo, sesión 2026-07-13.
+apply frameworks/base                 frameworks_base_statusbar_expanded.patch
+
 # packages/apps/Camera — adaptaciones Y210 al lifecycle de cámara
 apply packages/apps/Camera            packages_apps_Camera.patch
 

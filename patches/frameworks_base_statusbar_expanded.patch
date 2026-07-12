@@ -1,0 +1,61 @@
+diff --git a/packages/SystemUI/res/drawable-hdpi/title_bar_portrait.9.png b/packages/SystemUI/res/drawable-hdpi/title_bar_portrait.9.png
+index 70f7cc2987a4318338c0e4246d8cf80d55f4eb42..918a5ee8e111bc5a8b03b766221a64af74bfcca4 100755
+GIT binary patch
+delta 150
+zcmV;H0BQf%0kQ#*B!78HL_t(|obA`K5r8lZL(#8XR?Sq|HKKrm4jNPhdx3XyoI6{#
+zkz_KZ4lw78Xk!doM7mW6uu~nyX^<8i7$D!$0t+m#z!bRF%7Xj1w7>!j{1>?Ws$U5|
+z0BtJ@CNa3)P|Ad~ect%3<$^{N0_g3Rc)FC|44)(pFQsQf#}7ZN<p2Nx07*qoM6N<$
+Ef+fm8&Hw-a
+
+delta 187
+zcmV;s07U<?0oMVLB!3xnMObuGZ)S9NVRB^vL1b@YWgtmyVP|DhWnpA_ami&o0001a
+zNkl<Zc-rjOK?(pN2nA5T%vHOUXU)l&{RA<8Aij%QKGXt5W*Q>^<h%-u2#VTTgBv-n
+zI#^{biVd1S%{;cG0tE^b$O3!sDycw$0tIf&rKgYj%J2hlWHbjV_)8DR%EsA7M>Qwt
+p?q_B=t<^8_wkfYXzDn#CU;t>qYd;?0n7jZ0002ovPDHLkV1n{!OQ-+<
+
+diff --git a/packages/SystemUI/res/drawable-mdpi/title_bar_portrait.9.png b/packages/SystemUI/res/drawable-mdpi/title_bar_portrait.9.png
+index 13b18d84ba11e08f240b4c8fa5a1502dd220c60f..0791fa1fdb9250eafeeca91cf44d53a06ebf1011 100644
+GIT binary patch
+delta 133
+zcmV;00DAw*0ipqrBz|d0L_t(|obA;y3cxT7L(wmj`(Ge;jk>g%N}$*fC^2|_NM0=4
+zNHWQ>tp?D0&sqSqTTMffT!sOJB-<vtP*`(fV~jfNB-@Ogn%}XL>?c^1C=X^^RagU%
+n^4|QL5jAbKI{w?IU!COw?;eA(5Ym6B00000NkvXXu0mjfc|ki$
+
+delta 174
+zcmV;f08#&<0m=c8B!3xnMObuGZ)S9NVRB^vL1b@YWgtmyVP|DhWnpA_ami&o0001N
+zNkl<Zc-rihK?=Yy2n1E~RG;NrwN-L#b8!!ax{#1V7-mC2jtJ_8nQu(gPG;67sw%HM
+zpzL6<jO@PDT^XoZ!Q34O8?&i7|Lg~5pM(hkBRQf_u(c;k8z+=f1rx!v<<sNm<a#oA
+cyMGBV0H%<L+BrRr0ssI207*qoM6N<$f+pQZ@Bjb+
+
+diff --git a/packages/SystemUI/res/layout/status_bar_expanded.xml b/packages/SystemUI/res/layout/status_bar_expanded.xml
+index a103fb1b873..83af42c93cd 100644
+--- a/packages/SystemUI/res/layout/status_bar_expanded.xml
++++ b/packages/SystemUI/res/layout/status_bar_expanded.xml
+@@ -32,6 +32,7 @@
+         android:orientation="vertical"
+         android:paddingTop="3dp"
+         android:paddingBottom="5dp"
++        android:paddingLeft="3dp"
+         android:paddingRight="3dp"
+         android:background="@drawable/title_bar_portrait"
+         >
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java b/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java
+index cc8ff02000d..38659cecbb1 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java
+@@ -102,7 +102,14 @@ public class StatusBarView extends FrameLayout {
+             } else {
+                 newDateRight = getDateSize(mStatusIcons, oldDateRight, offset);
+                 if (newDateRight < 0) {
+-                    newDateRight = r;
++                    // No icon boundary to quantize against in either row (e.g.
++                    // no notification icons currently shown). Falling back to
++                    // the full row width (r) made the date view's background
++                    // stretch across the whole bar, visually covering the
++                    // notification icon area even though there was nothing
++                    // there to align with. Keep the date at its own natural
++                    // (already-measured) width instead.
++                    newDateRight = oldDateRight;
+                 }
+             }
+         }
