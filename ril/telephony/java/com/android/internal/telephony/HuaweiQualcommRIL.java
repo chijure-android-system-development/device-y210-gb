@@ -196,7 +196,7 @@ public class HuaweiQualcommRIL extends QualcommNoSimReadyRIL implements Commands
         }
 
         IccCardApplication application = status.getApplication(appIndex);
-        mAid = application.aid;
+        mAid = application != null ? application.aid : null;
 
         return status;
     }
