@@ -108,6 +108,9 @@ AudioHardware::AudioHardware() {
     audpp_filter_inited = false;
     playback_in_progress = false;
     post_proc_feature_mask = (ADRC_ENABLE | EQ_ENABLE | RX_IIR_ENABLE | MBADRC_ENABLE);
+    mTtyMode = TTY_OFF;
+    mNumSndEndpoints = 0;
+    audpre_index = 0;
 
     //Pre processing parameters
     memset(tx_iir_cfg,0,sizeof(tx_iir_cfg));
@@ -243,8 +246,12 @@ int AudioHardware::get_sound_endpoints(void)
 
         //Scan and check the endpoints
         for (int cnt = 0; cnt < mNumSndEndpoints; cnt++, ept++) {
+            memset(ept, 0, sizeof(*ept));
             ept->id = cnt;
-            ioctl(m7xsnddriverfd, SND_GET_ENDPOINT, ept);
+            if (ioctl(m7xsnddriverfd, SND_GET_ENDPOINT, ept) < 0) {
+                LOGE("snd endpoint: cnt=%d SND_GET_ENDPOINT failed: %s", cnt, strerror(errno));
+                continue;
+            }
             LOGI("snd endpoint: cnt=%d name=%s id=%d", cnt, ept->name, ept->id);
 
 			#define CHECK_FOR(desc) if (!strcmp(ept->name, #desc)) SND_DEVICE_##desc = ept->id;
@@ -745,7 +752,7 @@ int AudioHardware::check_and_set_audpp_parameters(char *buf, int size) {
 
         } else if ((buf[0] == 'G')) {
             //NS record table header
-            if (!(p = strtok(NULL, seps))) { audpp_token_error(); return -EINVAL;}
+            if (!(p = strtok(buf, ","))) { audpp_token_error(); return -EINVAL;}
             table_num = strtol(p + 1, &ps, 10);
 
             //NS record command id
@@ -1355,8 +1362,6 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
         if (mMode != AudioSystem::MODE_IN_CALL){
            return NO_ERROR;
         }
-    } else {
-        mTtyMode = TTY_OFF;
     }
 
 #ifdef HAVE_FM_RADIO
@@ -1788,30 +1793,79 @@ static status_t run_fm_dac_config(bool enable)
     return -EIO;
 }
 
+// /dev/msm_fm (qdsp5/audio_fm.c) is a thin ioctl-only driver: AUDIO_START/
+// AUDIO_STOP just tell the kernel to call audmgr_enable()/audmgr_disable()
+// (RPC to the ARM9) to register an audio session -- no PCM is ever written
+// to this fd. Retried in isolation on 2026-05-24/07-04 (reverted, no
+// audible change) and combined with config_dac+switch_mode on 2026-07-06
+// (reverted, "worse" -- total silence instead of static). That 2026-07-06
+// test used switch_mode(1), which was believed to be MODE_FM at the time;
+// the real reference source found on 2026-07-09 (see doAudioRouteOrMute())
+// showed the mode labels were inverted -- switch_mode(1) is actually
+// MODE_BTSCO, which tristates the FM I2S pins into the codec. So that test
+// ran with FM's own audio pins floating/disconnected, which fully explains
+// the "worse" result independently of audmgr itself. Retrying now that
+// switch_mode uses the correct MODE_FM=0/MODE_BTSCO=1 labels and correct
+// post-RPC ordering (and FmAudioPathEnable's codec registers, added the
+// same day) -- this exact combination has never actually been tested.
+static status_t run_fm_audmgr_session(int *fmfd, bool onoff)
+{
+    if (onoff) {
+        if (*fmfd >= 0) {
+            return NO_ERROR;
+        }
+        int fd = open("/dev/msm_fm", O_RDWR);
+        if (fd < 0) {
+            LOGE("run_fm_audmgr_session: open /dev/msm_fm failed: %s", strerror(errno));
+            return -errno;
+        }
+        if (ioctl(fd, AUDIO_START, 0) < 0) {
+            LOGE("run_fm_audmgr_session: AUDIO_START failed: %s", strerror(errno));
+            close(fd);
+            return -errno;
+        }
+        LOGI("run_fm_audmgr_session: AUDIO_START succeeded");
+        *fmfd = fd;
+        return NO_ERROR;
+    }
+
+    if (*fmfd >= 0) {
+        if (ioctl(*fmfd, AUDIO_STOP, 0) < 0) {
+            LOGE("run_fm_audmgr_session: AUDIO_STOP failed: %s", strerror(errno));
+        } else {
+            LOGI("run_fm_audmgr_session: AUDIO_STOP succeeded");
+        }
+        close(*fmfd);
+        *fmfd = -1;
+    }
+    return NO_ERROR;
+}
+
 status_t AudioHardware::setFmOnOff(bool onoff)
 {
     mFmRadioEnabled = onoff;
     LOGI("setFmOnOff: FM %s", onoff ? "on" : "off");
     // FM digital audio flows WCN2243 I2S -> MSM7x27A -> codec via
-    // rpc_snd_set_device(26/27). No HOST_PCM audmgr session needed --
-    // opening /dev/msm_fm with RPC_AUD_DEF_METHOD_HOST_PCM was found to
-    // conflict with the hardware I2S path (modem claims the headset DAC
-    // for PCM instead of routing I2S FM data through it).
+    // rpc_snd_set_device(26/27), with run_fm_audmgr_session() opening
+    // /dev/msm_fm to register the audmgr session -- matching the order
+    // seen in a real working stock Y210's dmesg (audmgr_enable() -> RPC
+    // READY -> RPC CODEC_CONFIG(volume=...) -> rpc_snd_set_device(26,0,0)).
     //
-    // Retried twice since, both times reverted as a genuine dead end, not
-    // a firmware/ordering issue:
-    // - 2026-07-04 (firmware already persistent): AUDIO_START succeeds,
-    //   no audio, adds a startup stutter.
-    // - 2026-07-06: dmesg from a real working stock Y210 showed
-    //   audmgr_enable() -> RPC READY -> RPC CODEC_CONFIG(volume=...)
-    //   happening BEFORE rpc_snd_set_device(26,0,0), so it was retried as
-    //   a *prerequisite* alongside config_dac/switch_mode (neither existed
-    //   in the 2026-07-04 test). Result: worse than without it -- what was
-    //   audible static (digital) or a power hum (analog) both went
-    //   completely silent with audmgr_enable() added. Confirms this
-    //   kernel's audmgr/audio_fm.c genuinely conflicts with the FM I2S/DAC
-    //   path rather than gating it -- not a missing step, an incompatible
-    //   one. See docs/FM_NOTES.md for the full comparison.
+    // Retried three times before this one:
+    // - 2026-05-24/2026-07-04: audmgr alone, no config_dac/switch_mode yet
+    //   (neither existed) -- reverted, no audible change.
+    // - 2026-07-06: combined with config_dac/switch_mode for the first
+    //   time -- reverted as "worse" (total silence). That test used
+    //   switch_mode(1), believed at the time to be MODE_FM; the real
+    //   reference source found 2026-07-09 (see doAudioRouteOrMute()) shows
+    //   the labels were inverted -- switch_mode(1) is actually MODE_BTSCO,
+    //   which tristates the FM I2S pins. That test ran with FM's own audio
+    //   pins floating, which alone explains "worse" -- it was never a
+    //   clean test of audmgr's compatibility with a real FM I2S path.
+    // This retry (2026-07-12) is the first to combine audmgr with the
+    // corrected MODE_FM=0/MODE_BTSCO=1 labels, the corrected post-RPC
+    // switch_mode ordering, and FmAudioPathEnable's codec registers (all
+    // from 2026-07-09). See docs/FM_NOTES.md for the full history.
     if (onoff) {
         // config_dac isn't part of the dzo/hardware_qcomm_media reference
         // (no fm_qsoc_patches call anywhere in it), but it IS part of
@@ -1820,10 +1874,13 @@ status_t AudioHardware::setFmOnOff(bool onoff)
         // kept enabled since it matches confirmed stock behavior and is
         // harmless.
         run_fm_dac_config(true);
+        run_fm_audmgr_session(&fmfd, true);
         // BTFMPinSwitching (run_btfm_pin_switch) now happens from
         // doAudioRouteOrMute(), after the RPC and gated on an actual
         // device transition -- matching the CAF reference order. See
         // that function and docs/FM_NOTES.md, 2026-07-09.
+    } else {
+        run_fm_audmgr_session(&fmfd, false);
     }
     return NO_ERROR;
 }
@@ -1927,7 +1984,7 @@ status_t AudioHardware::doAudioRouteOrMute(int32_t device)
 status_t AudioHardware::doRouting(AudioStreamInMSM72xx *input)
 {
     Mutex::Autolock lock(mLock);
-    uint32_t outputDevices = mOutput->devices();
+    uint32_t outputDevices = mOutput != NULL ? mOutput->devices() : 0;
     status_t ret = NO_ERROR;
     int new_snd_device = -1;
     int new_post_proc_feature_mask = 0;
@@ -2434,7 +2491,8 @@ AudioHardware::AudioStreamInMSM72xx::AudioStreamInMSM72xx() :
     mHardware(0), mFd(-1), mState(AUDIO_INPUT_CLOSED), mRetryCount(0),
     mFormat(AUDIO_HW_IN_FORMAT), mChannels(AUDIO_HW_IN_CHANNELS),
     mSampleRate(AUDIO_HW_IN_SAMPLERATE), mBufferSize(AUDIO_HW_IN_BUFFERSIZE),
-    mAcoustics((AudioSystem::audio_in_acoustics)0), mDevices(0)
+    mAcoustics((AudioSystem::audio_in_acoustics)0), mDevices(0),
+    mFirstread(false)
 {
 }
 
@@ -2828,17 +2886,55 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
 
 status_t AudioHardware::setFmVolume(float v)
 {
-    // Map [0.0, 1.0] → [1, 5]; keep minimum at 1 so the path is never
-    // muted when the user deliberately enables FM.
-    int vol = lrint(v * 5.0f);
-    if (vol < 1) vol = 1;
-    if (vol > 5) vol = 5;
-    LOGI("setFmVolume: %.2f → rpc vol %d", v, vol);
-    int fmHst = mFmIsAnalog ? SND_DEVICE_FM_ANALOG_HEADSET : SND_DEVICE_FM_HEADSET;
-    int fmSpk = mFmIsAnalog ? SND_DEVICE_FM_ANALOG_SPEAKER : SND_DEVICE_FM_SPEAKER;
-    set_volume_rpc(fmHst, SND_METHOD_VOICE, vol);
-    set_volume_rpc(fmSpk, SND_METHOD_VOICE, vol);
-    return NO_ERROR;
+    // STREAM_FM has 15 UI steps (AudioService.java MAX_STREAM_VOLUME), but
+    // AudioPolicyManagerBase::computeVolume() feeds this a v run through
+    // AudioSystem::linearToLog() -- a curve tuned for streams with many
+    // more steps than our 6 RPC levels. Mapping v straight to [0,5] bunches
+    // roughly 10 of the 15 UI steps onto the same RPC level (only the top
+    // few steps show any audible change). AudioSystem::logToLinear() is the
+    // exact inverse of that curve, so applying it here recovers the
+    // original linear 0-100 percentage (proportional to the UI step index)
+    // before quantizing -- spreading the 6 RPC levels evenly across the
+    // slider instead of piling most steps onto level 1.
+    int volPct = 0;
+
+    // This also treats NaN as zero because NaN > 0 is false.
+    if (v > 0.0f) {
+        if (v > 1.0f) {
+            v = 1.0f;
+        }
+
+        volPct = AudioSystem::logToLinear(v);
+
+        if (volPct < 0) {
+            volPct = 0;
+        } else if (volPct > 100) {
+            volPct = 100;
+        }
+    }
+
+    // Equivalent to ceil(volPct / 20.0), without floating-point rounding.
+    int vol = volPct > 0 ? (volPct + 19) / 20 : 0;
+
+    if (vol > 5) {
+        vol = 5;
+    }
+
+    LOGI("setFmVolume: log=%.4f linear=%d%% rpc=%d", v, volPct, vol);
+
+    mFmVolume = vol;
+
+    // SND_DEVICE_CURRENT applies to whatever device doAudioRouteOrMute()
+    // already routed FM to (headset or speaker, digital or analog) --
+    // same pattern setVoiceVolume() uses, and it self-adjusts instead of
+    // having to track fmHst/fmSpk/mFmIsAnalog here too.
+    status_t status = set_volume_rpc(SND_DEVICE_CURRENT, SND_METHOD_VOICE, vol);
+
+    if (status != NO_ERROR) {
+        LOGE("setFmVolume: SND_SET_VOLUME failed: %d", status);
+    }
+
+    return status;
 }
 #endif
 
