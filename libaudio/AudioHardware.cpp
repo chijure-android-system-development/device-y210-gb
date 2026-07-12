@@ -2825,9 +2825,13 @@ status_t AudioHardware::AudioStreamInMSM72xx::standby()
     }
 
 
-    // restore output routing if necessary
+    // restore output routing if necessary. clearCurDevice() only resets
+    // AudioHardware's mCurSndDevice -- it does not touch this stream's own
+    // mDevices (still holding the just-closed mic route), so passing "this"
+    // here re-evaluates and re-applies that stale input routing instead of
+    // falling back to pure output routing as the comment above intends.
     mHardware->clearCurDevice();
-    mHardware->doRouting(this);
+    mHardware->doRouting(NULL);
     return NO_ERROR;
 }
 

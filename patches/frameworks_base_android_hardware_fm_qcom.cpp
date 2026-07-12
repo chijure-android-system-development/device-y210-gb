@@ -338,6 +338,10 @@ static jint fmGetRawRdsNative(JNIEnv* env, jobject /*thiz*/, jint fd, jbyteArray
     if (fd < 0 || buff == NULL) return FM_JNI_FAILURE;
     jsize len = env->GetArrayLength(buff);
     if (len <= 0) return 0;
+    // count comes straight from Java; read()'s 3rd param is size_t, so a
+    // negative count would implicitly convert to a huge unsigned value and
+    // overflow past the end of buff.
+    if (count <= 0) return count == 0 ? 0 : FM_JNI_FAILURE;
     if (count > len) count = len;
     jbyte* bytes = env->GetByteArrayElements(buff, NULL);
     if (bytes == NULL) return FM_JNI_FAILURE;
