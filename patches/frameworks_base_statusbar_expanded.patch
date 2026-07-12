@@ -39,6 +39,27 @@ index a103fb1b873..83af42c93cd 100644
          android:paddingRight="3dp"
          android:background="@drawable/title_bar_portrait"
          >
+diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarService.java b/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarService.java
+index 209d532f2fc..27a898633ec 100644
+--- a/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarService.java
++++ b/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarService.java
+@@ -937,6 +937,16 @@ public class StatusBarService extends Service implements CommandQueue.Callbacks
+ 
+         if (!mTicking) {
+             setDateViewVisibility(true, com.android.internal.R.anim.fade_in);
++            // DateView's background (statusbar_background) has alpha=0 zones
++            // by design (see docs/STATUSBAR_NOTES.md) so it blends with the
++            // icon row -- but that means notification icons still drawn
++            // underneath show through those transparent zones instead of
++            // being cleanly hidden. performCollapse() already reverses this
++            // (fades notification icons back in); this is the missing other
++            // half of that pair.
++            if ((mDisabled & StatusBarManager.DISABLE_NOTIFICATION_ICONS) == 0) {
++                setNotificationIconVisibility(false, com.android.internal.R.anim.fade_out);
++            }
+         }
+     }
+ 
 diff --git a/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java b/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java
 index cc8ff02000d..38659cecbb1 100644
 --- a/packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java
