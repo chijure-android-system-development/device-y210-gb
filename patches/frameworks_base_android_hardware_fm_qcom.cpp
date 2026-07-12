@@ -84,12 +84,14 @@ static int acquireFdFromFminit()
 
     ssize_t n = recvmsg(sock, &msg, 0);
     close(sock);
-    if (n <= 0) {
+    if (n <= 0 || (msg.msg_flags & MSG_CTRUNC)) {
         return -1;
     }
 
     struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-    if (cmsg == NULL || cmsg->cmsg_type != SCM_RIGHTS) {
+    if (cmsg == NULL || cmsg->cmsg_level != SOL_SOCKET ||
+            cmsg->cmsg_type != SCM_RIGHTS ||
+            cmsg->cmsg_len != CMSG_LEN(sizeof(int))) {
         return -1;
     }
 
