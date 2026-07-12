@@ -64,6 +64,7 @@ PRODUCT_COPY_FILES += \
     device/huawei/y210/prebuilt/init.huawei.usb.rc:root/init.huawei.usb.rc \
     device/huawei/y210/prebuilt/system/etc/init.qcom.bt.sh:system/etc/init.qcom.bt.sh \
     device/huawei/y210/prebuilt/system/etc/init.qcom.fm.sh:system/etc/init.qcom.fm.sh \
+    device/huawei/y210/prebuilt/system/etc/init.qcom.post_boot.sh:system/etc/init.qcom.post_boot.sh \
     device/huawei/y210/prebuilt/system/etc/AutoVolumeControl.txt:system/etc/AutoVolumeControl.txt \
     device/huawei/y210/prebuilt/system/etc/AudioFilter.csv:system/etc/AudioFilter.csv \
     device/huawei/y210/prebuilt/system/etc/AudioFilter_MSM7225A_Y210.csv:system/etc/AudioFilter_MSM7225A_Y210.csv \

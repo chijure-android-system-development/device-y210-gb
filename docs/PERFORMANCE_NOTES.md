@@ -66,3 +66,31 @@ ondemand
   alineada con un equipo de 256 MB.
 - Esto no resuelve todos los cuellos de botella del port, pero si corrige dos
   regresiones concretas frente al comportamiento esperado del dispositivo.
+
+## `init.qcom.post_boot.sh` nunca se empaquetaba en el build (2026-07-12) — RESUELTO
+
+Verificando en hardware real (equipo CM7, no el de referencia stock) los
+valores esperados de esta misma nota, `up_threshold`/`sampling_rate` seguian
+en los defaults del kernel (`80`/`50000`) en vez de `90`/`25000`.
+
+**Causa raiz:** `device/huawei/y210/prebuilt/system/etc/init.qcom.post_boot.sh`
+existe en el arbol y `init.huawei.rc` ya tiene el `service qcom-post-boot`
+(`disabled`, `oneshot`, disparado por `on property:init.svc.bootanim=stopped`),
+pero `device_y210.mk` nunca tuvo la linea `PRODUCT_COPY_FILES` para copiarlo a
+`system/etc/`. A diferencia de `init.qcom.bt.sh`/`init.qcom.fm.sh`/`init.qcom.wifi.sh`
+(mismo patron, si presentes en el `.mk`), el archivo simplemente no llegaba al
+`system.img` — el servicio fallaba al arrancar (`sh: no encuentra el script`)
+sin bloquear el boot, por lo que pasaba desapercibido.
+
+**Fix:** agregada la linea faltante en `device_y210.mk`:
+
+```
+device/huawei/y210/prebuilt/system/etc/init.qcom.post_boot.sh:system/etc/init.qcom.post_boot.sh \
+```
+
+**Verificado en equipo real:** `adb push` del script + ejecucion manual primero
+(confirmo valores correctos), despues `adb reboot` completo (confirmo que el
+`service qcom-post-boot` lo dispara solo al terminar `bootanim`, sin intervencion
+manual). Los otros valores del LMK/`vm.*` de esta misma nota SI estaban activos
+desde antes porque se escriben directo en `init.huawei.rc` (no dependen de este
+script) — solo el tuning de CPU governor estaba afectado.
