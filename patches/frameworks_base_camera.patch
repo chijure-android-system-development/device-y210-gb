@@ -167,10 +167,10 @@ index e0ba2902ff0..c7c2a1acfee 100755
                  mVideoWidth, mVideoHeight);
          IPCThreadState::self()->restoreCallingIdentity(token);
 diff --git a/services/camera/libcameraservice/CameraService.cpp b/services/camera/libcameraservice/CameraService.cpp
-index 55604fb64cf..fd388a5bec7 100644
+index 55604fb64cf..058c8a076a9 100644
 --- a/services/camera/libcameraservice/CameraService.cpp
 +++ b/services/camera/libcameraservice/CameraService.cpp
-@@ -690,7 +690,13 @@ status_t CameraService::Client::setPreviewDisplay(const sp<ISurface>& surface) {
+@@ -690,7 +690,21 @@ status_t CameraService::Client::setPreviewDisplay(const sp<ISurface>& surface) {
              if (mSurface != NULL)
                  result = setOverlay();
          } else if (mSurface != 0) {
@@ -178,6 +178,14 @@ index 55604fb64cf..fd388a5bec7 100644
 +            // pmem_adsp heap cannot be mmap'd cross-process on msm7x27 once
 +            // allocated. Stop preview, restart immediately with the new surface
 +            // set so startPreview creates a fresh mappable heap and registers it.
++            //
++            // registerPreviewBuffers() is known to genuinely fail here with
++            // -ENODEV on this hardware (confirmed on-device, e.g. switching
++            // into video mode) as part of that same pmem_adsp limitation --
++            // matching the other registerPreviewBuffers() call site in this
++            // file, that failure is expected/non-fatal and must not be
++            // propagated as this call's result, or callers up through the
++            // Camera JNI throw IOException and crash the app.
 +            mHardware->stopPreview();
 +            if (mHardware->startPreview() == NO_ERROR) {
 +                registerPreviewBuffers();
@@ -185,7 +193,7 @@ index 55604fb64cf..fd388a5bec7 100644
          }
      }
  
-@@ -998,7 +1004,9 @@ status_t CameraService::Client::startPreviewMode() {
+@@ -998,7 +1012,9 @@ status_t CameraService::Client::startPreviewMode() {
             // Unregister here because the surface may be previously registered
             // with the raw (snapshot) heap.
             mSurface->unregisterBuffers();
