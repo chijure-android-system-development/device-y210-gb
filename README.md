@@ -18,7 +18,7 @@ device stability on legacy Qualcomm MSM7x27A hardware.
 | Shipped Android Version  | 2.3 Gingerbread                                          |
 | Storage                  | ~512 MB internal, microSD expandable                     |
 | Display                  | 320 x 480 pixels (HVGA), ~3.5"                           |
-| Camera                   | VGA-class rear camera (JPEG capture ~640x480, no HD video encoder) |
+| Camera                   | 2 MP rear (foto hasta 1600x1200), video H.263 352x288 (sin encoder de hardware, VGA no soportado) |
 | Connectivity             | Wi-Fi (Atheros AR6000/AR6005, SDIO), Bluetooth + FM (Qualcomm WCN2243), HSPA |
 
 ## Estado del port
