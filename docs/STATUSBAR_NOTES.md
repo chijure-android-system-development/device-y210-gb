@@ -139,14 +139,28 @@ CM7), confirmados con capturas de pantalla reales del equipo:
    plano uniforme) + `paddingLeft="3dp"` explícito en `status_bar_expanded.xml`
    (antes ausente, Android usaba el padding por defecto del nine-patch).
 2. **Fecha dibujada sobre el área de iconos de notificación al expandir**:
-   `StatusBarView.onLayout()` "encaja" la fecha contra el ícono más cercano;
-   si no encuentra ninguno (sin iconos de notificación visibles), caía a
-   ancho completo de la fila. Fix: usar el ancho natural ya medido de la
-   fecha en ese caso.
+   dos causas apiladas, encontradas en dos pasadas:
+   a) `StatusBarView.onLayout()` "encaja" la fecha contra el ícono más
+      cercano; si no encuentra ninguno, caía a ancho completo de la fila.
+      Fix: usar el ancho natural ya medido de la fecha en ese caso.
+   b) Con (a) ya corregido, seguía viéndose un ícono de notificación EN
+      COLOR asomándose a través del texto de la fecha (confirmado con
+      capturas, no es ghosting de doble buffer -- se descartó forzando
+      `debug.surface.sb_nocopyback`/`debug.copybit.disable_statusbar` +
+      restart de surfaceflinger, sin cambio). Causa real: el fondo de
+      `DateView` (`statusbar_background`, el mismo nine-patch del factor 1
+      de ghosting arriba) tiene zonas alpha=0 por diseño para mezclarse
+      con la fila de iconos -- pero si los iconos no se ocultan, se ven a
+      través de esas zonas transparentes. `performCollapse()` ya hacía la
+      mitad simétrica (reaparecen los iconos al colapsar);
+      `makeExpandedVisible()` le faltaba la otra mitad (ocultarlos al
+      mostrar la fecha). Agregado con el mismo guard que usa el resto del
+      archivo (`mTicking`, `DISABLE_NOTIFICATION_ICONS`).
 
 **Patch:** `device/huawei/y210/patches/frameworks_base_statusbar_expanded.patch`
 **Archivos:** `packages/SystemUI/res/drawable-{mdpi,hdpi}/title_bar_portrait.9.png`,
 `packages/SystemUI/res/layout/status_bar_expanded.xml`,
+`packages/SystemUI/src/com/android/systemui/statusbar/StatusBarService.java`,
 `packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java`
 
 ## Doble fecha
