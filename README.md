@@ -14,7 +14,7 @@ device stability on legacy Qualcomm MSM7x27A hardware.
 | CPU                      | Single-core Qualcomm Scorpion, 1 GHz (1008 MHz)         |
 | Chipset                  | Qualcomm MSM7227A / MSM7x27a (Snapdragon S1)             |
 | GPU                      | Adreno 200                                               |
-| Memory                   | 256 MB RAM                                               |
+| Memory                   | 256 MB RAM (~173 MB usable, resto reservado para radio/GPU) |
 | Shipped Android Version  | 2.3 Gingerbread                                          |
 | Storage                  | ~512 MB internal, microSD expandable                     |
 | Display                  | 320 x 480 pixels (HVGA), ~3.5"                           |
