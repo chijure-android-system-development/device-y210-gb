@@ -11,7 +11,7 @@ device stability on legacy Qualcomm MSM7x27A hardware.
 
 | Basic                    | Spec Sheet                                             |
 | ------------------------:|:------------------------------------------------------- |
-| CPU                      | Single-core Qualcomm Scorpion, ~800 MHz                 |
+| CPU                      | Single-core Qualcomm Scorpion, 1 GHz (1008 MHz)         |
 | Chipset                  | Qualcomm MSM7227A / MSM7x27a (Snapdragon S1)             |
 | GPU                      | Adreno 200                                               |
 | Memory                   | 256 MB RAM                                               |
