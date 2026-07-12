@@ -126,6 +126,29 @@ adb shell setprop debug.copybit.disable_statusbar 1
 adb shell 'stop surfaceflinger; start surfaceflinger'
 ```
 
+## Franja gris + fecha sobre iconos en el panel expandido (2026-07-13) — RESUELTO
+
+Dos bugs distintos, no específicos del Y210 (heredados de la rama SystemUI de
+CM7), confirmados con capturas de pantalla reales del equipo:
+
+1. **Franja gris fija a la izquierda de `power_and_carrier`** (desplaza línea
+   verde del PowerWidget y "Claro"): `title_bar_portrait.9.png` tenía la
+   región de estiramiento horizontal degenerada (1px de 17, pegada al borde
+   derecho) — el nine-patch no lograba estirarse para cubrir el ancho real.
+   Fix: región de estiramiento ampliada a todo el contenido (fondo es gris
+   plano uniforme) + `paddingLeft="3dp"` explícito en `status_bar_expanded.xml`
+   (antes ausente, Android usaba el padding por defecto del nine-patch).
+2. **Fecha dibujada sobre el área de iconos de notificación al expandir**:
+   `StatusBarView.onLayout()` "encaja" la fecha contra el ícono más cercano;
+   si no encuentra ninguno (sin iconos de notificación visibles), caía a
+   ancho completo de la fila. Fix: usar el ancho natural ya medido de la
+   fecha en ese caso.
+
+**Patch:** `device/huawei/y210/patches/frameworks_base_statusbar_expanded.patch`
+**Archivos:** `packages/SystemUI/res/drawable-{mdpi,hdpi}/title_bar_portrait.9.png`,
+`packages/SystemUI/res/layout/status_bar_expanded.xml`,
+`packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java`
+
 ## Doble fecha
 
 Si aparecen 2 fechas:
