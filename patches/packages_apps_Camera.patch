@@ -44,7 +44,7 @@ index e02ca1f4..49458d17 100644
  
 -
 diff --git a/src/com/android/camera/Camera.java b/src/com/android/camera/Camera.java
-index af7da889..600dff53 100644
+index af7da889..14198a46 100644
 --- a/src/com/android/camera/Camera.java
 +++ b/src/com/android/camera/Camera.java
 @@ -62,6 +62,7 @@ import android.view.Menu;
@@ -280,18 +280,7 @@ index af7da889..600dff53 100644
      private void updateCameraParametersInitialize() {
          // Reset preview frame rate to the maximum because it may be lowered by
          // video camera application.
-@@ -2015,20 +2046,42 @@ public class Camera extends BaseCamera implements View.OnClickListener,
-                     pictureSize, supported, mParameters);
-         }
- 
-+        if (isY210CameraWorkaroundEnabled()) {
-+            List<Size> supportedPictureSizes = mParameters.getSupportedPictureSizes();
-+            if (hasSupportedSize(supportedPictureSizes, 640, 480)) {
-+                mParameters.setPictureSize(640, 480);
-+            }
-+        }
-+
-         // Set the preview frame aspect ratio according to the picture size.
+@@ -2019,16 +2050,31 @@ public class Camera extends BaseCamera implements View.OnClickListener,
          Size size = mParameters.getPictureSize();
          PreviewFrameLayout frameLayout =
                  (PreviewFrameLayout) findViewById(R.id.frame_layout);
@@ -326,7 +315,7 @@ index af7da889..600dff53 100644
                  mParameters.setPreviewSize(optimalSize.width, optimalSize.height);
  
                  // Zoom related settings will be changed for different preview
-@@ -2197,7 +2250,11 @@ public class Camera extends BaseCamera implements View.OnClickListener,
+@@ -2197,7 +2243,11 @@ public class Camera extends BaseCamera implements View.OnClickListener,
              updateCameraParametersPreference();
          }
  

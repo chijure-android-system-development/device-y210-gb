@@ -338,6 +338,42 @@ permite continuar — la cámara sigue funcionando correctamente.
 
 ---
 
+## Foto a resolución real del sensor (2MP / UXGA 1600x1200) (2026-07-12) — RESUELTO
+
+El sensor real es de 2MP; la app solo ofrecía VGA/QVGA como tamaño de foto.
+
+**Causa raíz (dos capas):**
+
+1. `Y210CameraWrapper::seedParameters()` (fallback usado cuando el blob no
+   entrega parámetros propios) solo listaba `640x480,512x384,320x240` en
+   `KEY_SUPPORTED_PICTURE_SIZES`, sin ninguna opción de 2MP.
+2. Aunque se agregara 2MP a la lista, `Camera.java` tenía un workaround
+   Y210 que forzaba `setPictureSize(640, 480)` sin condición de tamaño real
+   del sensor — pisaba cualquier selección de `CameraSettings.initialCameraPictureSize()`
+   (que normalmente elige la primera opción de `arrays.xml` que el device
+   soporte, orden de mayor a menor resolución).
+
+**Fix:**
+
+- `device/huawei/y210/libcamera/Y210CameraWrapper.cpp`: `KEY_SUPPORTED_PICTURE_SIZES`
+  ahora es `"1600x1200,640x480,512x384,320x240"`; default `setPictureSize(1600, 1200)`.
+- `packages/apps/Camera/src/.../Camera.java`: eliminado el bloque que forzaba
+  foto a 640x480 en `updateCameraParametersPreference()` (se deja intacto el
+  workaround de **preview** a 640x480, que tiene una razón distinta y
+  verificada: el blob rechaza ciertos tamaños de preview).
+- Patch regenerado: `device/huawei/y210/patches/packages_apps_Camera.patch`.
+
+**Video NO se toca:** sigue limitado a H.263 352x288 (ver sección "Grabación
+de video" abajo) — es un límite del encoder software, no de la lista de
+tamaños de foto.
+
+**Verificado en equipo real:** recompilado `libcamera` + `Camera.apk` en
+Docker, pusheados + `adb reboot`. En Ajustes de Cámara aparecen tres opciones
+(UXGA 1600x1200, VGA 640x480, QVGA 320x240 — `512x384` no tiene entry en
+`arrays.xml` así que no aparece en el picker aunque siga en la lista soportada).
+Foto capturada en UXGA: JPEG real de 1600x1200, 206 KB (vs. ~51 KB de una
+foto VGA anterior). Sin crash de `mediaserver`, sin `FATAL`/`SIGSEGV` en logcat.
+
 ## Notas de build
 
 ```bash

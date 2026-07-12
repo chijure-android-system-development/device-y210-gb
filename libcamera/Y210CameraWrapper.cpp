@@ -352,7 +352,7 @@ CameraParameters Y210CameraWrapper::seedParameters() const
     params.setPreviewSize(640, 480);
     params.setPreviewFrameRate(15);
     params.setPreviewFormat(CameraParameters::PIXEL_FORMAT_YUV420SP);
-    params.setPictureSize(640, 480);
+    params.setPictureSize(1600, 1200);
     params.setPictureFormat(CameraParameters::PIXEL_FORMAT_JPEG);
     params.set(CameraParameters::KEY_JPEG_QUALITY, "100");
     params.set(CameraParameters::KEY_JPEG_THUMBNAIL_WIDTH, "512");
@@ -369,7 +369,7 @@ CameraParameters Y210CameraWrapper::seedParameters() const
     params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
             "640x480,480x320,352x288,240x160,176x144");
     params.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
-            "640x480,512x384,320x240");
+            "1600x1200,640x480,512x384,320x240");
     params.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FRAME_RATES, "15");
     // Some vendor blobs reject setParameters() when these are missing.
     params.set(CameraParameters::KEY_PREVIEW_FPS_RANGE, "5000,31000");
