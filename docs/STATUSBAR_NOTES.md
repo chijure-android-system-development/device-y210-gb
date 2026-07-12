@@ -163,6 +163,25 @@ CM7), confirmados con capturas de pantalla reales del equipo:
 `packages/SystemUI/src/com/android/systemui/statusbar/StatusBarService.java`,
 `packages/SystemUI/src/com/android/systemui/statusbar/StatusBarView.java`
 
+## Mismo defecto de nine-patch en TODOS los title_bar_*.9.png (2026-07-13) — RESUELTO
+
+El mismo defecto del Factor 2 arriba (región de estiramiento horizontal de
+1px, degenerada) resultó estar presente en **todos** los `title_bar_*.9.png`
+del árbol, sin excepción, en las tres densidades — no solo en el de SystemUI.
+Confirmado visible en PackageInstaller (diálogo "¿Instalar esta app?").
+Corregidos (verificado antes que cada uno varía solo verticalmente, así que
+ensanchar la región de estiramiento no cambia la apariencia): `title_bar_medium`,
+`title_bar_portrait`, `title_bar_shadow`, `title_bar_tall` de
+`frameworks/base/core/res`, más las copias locales en `PackageInstaller`, `Tag`
+y `Contacts`. **Sin tocar** (variación horizontal real, no verificado
+visualmente): `packages/apps/AccountsAndSyncSettings/res/drawable-*/title_bar.9.png`
+— si aparece el mismo síntoma ahí, revisar con cuidado antes de aplicar el
+mismo fix mecánico.
+
+**Patches:** `frameworks_base_titlebar_ninepatch.patch`,
+`packages_apps_PackageInstaller.patch`, `packages_apps_Tag.patch`,
+`packages_apps_Contacts.patch`
+
 ## Doble fecha
 
 Si aparecen 2 fechas:
