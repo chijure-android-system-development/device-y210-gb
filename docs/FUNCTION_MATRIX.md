@@ -122,7 +122,7 @@ Ver `device/huawei/y210/GPS_NOTES.md` para diagnóstico y bugs resueltos.
 - Preview foto `640x480` color portrait: **OK** (NV21→RGB565 SW, orientation=90)
 - Captura de foto: **OK** (SHUTTER + RAW_IMAGE 294912 B + COMPRESSED_IMAGE ~55 KB JPEG)
 - `close → reopen`: **OK** (fix vtable slot 26 en `release()`)
-- Switch foto↔video: **OK** (keep() eliminado, stop/restart en setPreviewDisplay)
+- Switch foto↔video: **OK** (2026-07-13: `keep()` en `MenuHelper.startCameraActivity()` estaba documentado como eliminado en CAMERA_NOTES.md pero nunca se había aplicado de verdad al árbol -- causaba preview negro/congelado por fd de pmem_adsp reutilizado, rechazado como "invalid heap" por SurfaceFlinger. Eliminado y confirmado en hardware real.)
 - Preview video: **OK** (H.263 352×288, mismo pipeline NV21→RGB565)
 - Grabación video H.263 352×288 15fps: **OK** (MP4 guardado en galería)
 - Video HD (640×480): **N/A** (sin driver kernel `msm_vidc_enc`)
