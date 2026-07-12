@@ -66,7 +66,9 @@ static int load_firmware(const char *version)
     }
 
     int status = 0;
-    waitpid(pid, &status, 0);
+    if (waitpid(pid, &status, 0) < 0) {
+        return -1;
+    }
 
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
         property_set("hw.fm.init", "1");
@@ -114,12 +116,14 @@ int main(void)
          * do — FMRadioService re-execs us on every onCreate(). */
         return 0;
     }
+    fcntl(srv, F_SETFD, FD_CLOEXEC);
 
     int radiofd = open("/dev/radio0", O_RDWR);
     if (radiofd < 0) {
         close(srv);
         return 1;
     }
+    fcntl(radiofd, F_SETFD, FD_CLOEXEC);
 
     sleep(1);
 
