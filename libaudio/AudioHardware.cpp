@@ -555,6 +555,10 @@ int AudioHardware::check_and_set_audpp_parameters(char *buf, int size) {
 
         //Let equalizer calculate coefficients
         eq_cal = (void *(*) (int32_t, int32_t, int32_t, uint16_t, int32_t, int32_t *, int32_t *, uint16_t *))::dlsym(audioeq, "audioeq_calccoefs");
+        if (eq_cal == NULL) {
+            LOGE("audioeq_calccoefs symbol not found");
+            return -1;
+        }
 
         //Cleanup the equalizer area
         memset(&equalizer[device_id], 0, sizeof(eq_filter));
@@ -617,6 +621,8 @@ int AudioHardware::check_and_set_audpp_parameters(char *buf, int size) {
         //MB_ADRC Filter number of bands
         if (!(p = strtok(NULL, seps))) { audpp_token_error(); return -EINVAL;}
         mbadrc_cfg[device_id].num_bands = (uint16_t)strtol(p, &ps, 16);
+        // adrc_band[] below is fixed-size (see mbadrc_filter in AudioHardware.h)
+        if (mbadrc_cfg[device_id].num_bands > 5) { audpp_token_error(); return -EINVAL;}
 
         //MB_ADRC Filter sample levels
         if (!(p = strtok(NULL, seps))) { audpp_token_error(); return -EINVAL;}
@@ -629,6 +635,8 @@ int AudioHardware::check_and_set_audpp_parameters(char *buf, int size) {
         //MB_ADRC Filter external buffer size
         if (!(p = strtok(NULL, seps))) { audpp_token_error(); return -EINVAL;}
         mbadrc_cfg[device_id].ext_buf_size = (uint16_t)strtol(p, &ps, 16);
+        // ext_buf.buff[] below is fixed-size 196 (see adrc_ext_buf in AudioHardware.h)
+        if (mbadrc_cfg[device_id].ext_buf_size > 392) { audpp_token_error(); return -EINVAL;}
 
         //MB_ADRC Filter external partition
         if (!(p = strtok(NULL, seps))) { audpp_token_error(); return -EINVAL;}
