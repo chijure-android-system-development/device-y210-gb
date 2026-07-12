@@ -145,6 +145,37 @@ case "$target" in
     ;;
 esac
 
+# Y210 (CM7): mejoras adicionales sobre el tuning original de Qualcomm para
+# msm7627a/y210 (bloque aislado, no afecta otros targets de este script).
+# Ver device/huawei/y210/docs/PERFORMANCE_NOTES.md.
+case "$target" in
+    "y210")
+        # CPU: "interactive" reacciona a picos de carga sin esperar el
+        # muestreo periodico de "ondemand" (mas responsivo a touch en un
+        # solo core). Tunables = defaults del propio kernel Qualcomm para
+        # este SoC, fijados explicitamente para no depender de un default
+        # de kernel que podria cambiar.
+        if grep -q interactive /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors 2>/dev/null; then
+            echo interactive > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+            if [ -d /sys/devices/system/cpu/cpufreq/interactive ]; then
+                echo 85 > /sys/devices/system/cpu/cpufreq/interactive/go_maxspeed_load
+                echo 80000 > /sys/devices/system/cpu/cpufreq/interactive/min_sample_time
+            fi
+        fi
+
+        # I/O: cfq asume disco rotacional; en flash NAND (YAFFS2/mtdblock)
+        # su heuristica de fairness solo agrega overhead de CPU sin beneficio.
+        for sched in /sys/block/mtdblock*/queue/scheduler; do
+            [ -f "$sched" ] && echo noop > "$sched"
+        done
+
+        # VM: bajar el umbral de writeback diferido para evitar stalls largos
+        # de UI cuando el buffer sucio finalmente se descarga a NAND lenta.
+        echo 10 > /proc/sys/vm/dirty_ratio
+        echo 5 > /proc/sys/vm/dirty_background_ratio
+        ;;
+esac
+
 emmc_boot=`getprop ro.emmc`
 case "$emmc_boot"
     in "1")

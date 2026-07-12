@@ -94,3 +94,44 @@ device/huawei/y210/prebuilt/system/etc/init.qcom.post_boot.sh:system/etc/init.qc
 manual). Los otros valores del LMK/`vm.*` de esta misma nota SI estaban activos
 desde antes porque se escriben directo en `init.huawei.rc` (no dependen de este
 script) — solo el tuning de CPU governor estaba afectado.
+
+## Mejoras adicionales sobre el tuning de Qualcomm (2026-07-12)
+
+Con el script ya empaquetado (fix anterior), se investigo en el equipo real
+que otras palancas de rendimiento expone el kernel sin usar (governors
+disponibles, scheduler de I/O, sysctls de VM) — el kernel no esta disponible
+en este entorno de desarrollo (`phoenix-kernel` referenciado en el README raiz
+no esta presente en este host), asi que la unica forma de verificar que existe
+de verdad fue consultando `/sys` en el equipo con CM7 flasheado.
+
+Bloque nuevo, aislado a `"y210"` (no toca el resto de targets Qualcomm que
+comparten este mismo script):
+
+- **CPU governor `interactive`** en vez de `ondemand`: el kernel Qualcomm de
+  este SoC ya trae este governor compilado (confirmado via
+  `scaling_available_governors`), con sus propios tunables por defecto
+  (`go_maxspeed_load=85`, `min_sample_time=80000`) — no son valores inventados,
+  son el default del propio kernel, solo fijados explicitamente por si cambian.
+  `interactive` reacciona a picos de carga de inmediato; `ondemand` espera a la
+  siguiente ventana de muestreo (`sampling_rate`), lo que se siente como lag
+  al tocar la pantalla en un solo core.
+- **I/O scheduler `noop`** en los `mtdblock*` (YAFFS2 sobre NAND raw): estaban
+  en `cfq`, que asume disco rotacional y solo agrega overhead de CPU sin
+  beneficio real en flash.
+- **`vm.dirty_ratio` 20→10** (`vm.dirty_background_ratio` ya estaba en 5):
+  reduce cuanto buffer sucio se acumula antes de forzar writeback sincrono,
+  para evitar stalls largos de UI cuando por fin se descarga a la NAND lenta.
+
+**Bug propio encontrado y corregido durante la verificacion:** la primera
+version de este bloque condicionaba TODO (governor + tunables) a que ya
+existiera `/sys/devices/system/cpu/cpufreq/interactive/` — pero ese directorio
+solo lo crea el kernel DESPUES de seleccionar el governor, asi que la condicion
+nunca se cumplia y el bloque completo quedaba en no-op. Fix: primero verificar
+disponibilidad en `scaling_available_governors`, escribir el governor, y solo
+despues (ya creado el directorio) escribir los tunables.
+
+**Verificado en equipo real:** push manual + ejecucion, despues `adb reboot`
+completo confirmando los 3 valores tras boot normal (`interactive` con
+tunables correctos, `noop` en `mtdblock4`/`mtdblock6`, `dirty_ratio=10`), LMK
+intacto, sin `FATAL`/`ANR` en logcat, `system_server`/`systemui`/`launcher`
+corriendo con normalidad.
