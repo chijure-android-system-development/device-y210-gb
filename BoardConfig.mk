@@ -19,6 +19,10 @@ ARCH_ARM_HAVE_TLS_REGISTER := true
 TARGET_BOOTLOADER_BOARD_NAME := y210
 TARGET_OTA_ASSERT_DEVICE := y210,hwy210
 
+# JB build requires this explicitly (CM9/ICS did not); hardware/qcom/display's
+# libtilerenderer is only defined when set, and frameworks/base/core/jni
+# links against it whenever BOARD_USES_QCOM_HARDWARE is true.
+USE_OPENGL_RENDERER := true
 
 # Host build hygiene: disable SREC grammar generation on modern hosts.
 # This avoids building `grxmlcompile` (OpenFst-based) which is not needed
@@ -44,6 +48,23 @@ TARGET_SPECIFIC_HEADER_PATH := device/huawei/y210/include
 #recovery
 BOARD_LDPI_RECOVERY := true
 BOARD_HAS_JANKY_BACKBUFFER := true
+# MSM7x27A's fb driver predates the msmfb_metadata/MSMFB_METADATA_SET alpha
+# blend ioctl that hardware/qcom/display/libgralloc now issues unconditionally
+# unless this is set; our device/kernel headers don't define it either.
+TARGET_NO_HW_VSYNC := true
+# This device has no secure/DRM content-protection path (no TrustZone-backed
+# playback), and our kernel's msm_rotator_img_info predates the "secure"
+# field hardware/qcom/display/liboverlay otherwise references.
+COMMON_GLOBAL_CFLAGS += -DQCOM_NO_SECURE_PLAYBACK
+# camera.y210 (libcamera-caf) uses android::MemoryHeapPmem for the PMEM-backed
+# camera buffer heaps; frameworks/native/libs/binder only builds it when set.
+BOARD_NEEDS_MEMORYHEAPPMEM := true
+# Same HAL id-mismatch crash already found and fixed for vee4ss (see memory):
+# hardware.c's load() does `strcmp(id, hmi->id)` after dlsym'ing
+# HAL_MODULE_INFO_SYM, and hmi->id reads as garbage on this toolchain/build,
+# crashing (SEGV) instead of just failing the string compare. Hit here via
+# LightsService failing to load lights.y210.so during system_server startup.
+BOARD_DISABLE_HW_ID_MATCH_CHECK := true
 #BOARD_CUSTOM_GRAPHICS           := ../../../device/huawei/y210/recovery/graphics.c
 
 

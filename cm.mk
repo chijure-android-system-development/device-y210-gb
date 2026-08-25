@@ -1,4 +1,7 @@
-$(call inherit-product, $(SRC_TARGET_DIR)/product/languages_full.mk)
+# languages_full.mk ships ~50 locales, bloating framework-res.apk and every
+# app's resources.arsc — no room for that on this device's ~186 MiB /system
+# partition. Set just the locales actually needed instead of inheriting it.
+PRODUCT_LOCALES := en_US es_US
 
 $(call inherit-product, vendor/cm/config/gsm.mk)
 

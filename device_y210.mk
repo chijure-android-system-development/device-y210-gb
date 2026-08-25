@@ -1,4 +1,7 @@
-$(call inherit-product, $(SRC_TARGET_DIR)/product/languages_full.mk)
+# languages_full.mk deliberately NOT inherited here (see cm.mk) — this
+# device sets PRODUCT_LOCALES := en_US es_US directly to fit its ~186 MiB
+# /system partition; this file used to redundantly re-inherit the full
+# ~50-locale set, undoing that trim via a separate product-inheritance node.
 
 # Device-specific resource overlays (lockscreen layout, etc.)
 PRODUCT_PACKAGE_OVERLAYS := device/huawei/y210/overlay
@@ -6,8 +9,12 @@ PRODUCT_PACKAGE_OVERLAYS := device/huawei/y210/overlay
 # The gps config appropriate for this device
 $(call inherit-product, device/common/gps/gps_us_supl.mk)
 
-# RIL disabled for now
-# FRAMEWORKS_BASE_SUBDIRS += ../../$(LOCAL_PATH)/ril/
+# Adds HuaweiQualcommRIL (extends QualcommSharedRIL) into framework.jar's
+# sources, matching device/lge/g300-style JB device trees. Needs cm.mk (the
+# top-level product file that inherits this one) to have LOCAL_PATH set to
+# device/huawei/y210 at this point, which it does via the normal product
+# makefile include mechanism.
+FRAMEWORKS_BASE_SUBDIRS += ../../$(LOCAL_PATH)/ril/
 
 $(call inherit-product-if-exists, vendor/huawei/y210/y210-vendor.mk)
 
@@ -47,14 +54,24 @@ PRODUCT_PACKAGES += \
     FileManager \
     libos_compat
 
+# Telephony — generic_no_telephony.mk (our base, see below) deliberately
+# omits these (it's meant for tablets); this is the same pair build/target/
+# product/telephony.mk normally adds back for phone products. Without
+# `rild`, init.rc's "service ril-daemon /system/bin/rild" silently disables
+# itself at boot ("cannot find '/system/bin/rild'") since LOCAL_MODULE_TAGS
+# := optional modules aren't installed by default on userdebug/user builds.
+PRODUCT_PACKAGES += \
+    rild \
+    Mms
+
 # Install the features available on this device.
 PRODUCT_COPY_FILES += \
-    frameworks/base/data/etc/handheld_core_hardware.xml:system/etc/permissions/handheld_core_hardware.xml \
-    frameworks/base/data/etc/android.hardware.camera.autofocus.xml:system/etc/permissions/android.hardware.camera.autofocus.xml \
-    frameworks/base/data/etc/android.hardware.telephony.gsm.xml:system/etc/permissions/android.hardware.telephony.gsm.xml \
-    frameworks/base/data/etc/android.hardware.location.gps.xml:system/etc/permissions/android.hardware.location.gps.xml \
-    frameworks/base/data/etc/android.hardware.wifi.xml:system/etc/permissions/android.hardware.wifi.xml \
-    frameworks/base/data/etc/android.hardware.touchscreen.multitouch.distinct.xml:system/etc/permissions/android.hardware.touchscreen.multitouch.distinct.xml
+    frameworks/native/data/etc/handheld_core_hardware.xml:system/etc/permissions/handheld_core_hardware.xml \
+    frameworks/native/data/etc/android.hardware.camera.autofocus.xml:system/etc/permissions/android.hardware.camera.autofocus.xml \
+    frameworks/native/data/etc/android.hardware.telephony.gsm.xml:system/etc/permissions/android.hardware.telephony.gsm.xml \
+    frameworks/native/data/etc/android.hardware.location.gps.xml:system/etc/permissions/android.hardware.location.gps.xml \
+    frameworks/native/data/etc/android.hardware.wifi.xml:system/etc/permissions/android.hardware.wifi.xml \
+    frameworks/native/data/etc/android.hardware.touchscreen.multitouch.distinct.xml:system/etc/permissions/android.hardware.touchscreen.multitouch.distinct.xml
 
 PRODUCT_COPY_FILES += \
     device/huawei/y210/init.rc:root/init.rc \
@@ -79,12 +96,10 @@ PRODUCT_COPY_FILES += \
 	    device/huawei/y210/prebuilt/system/lib/libfm_hal.so:system/lib/libfm_hal.so \
 	    device/huawei/y210/prebuilt/system/lib/hw/libqcomfm_if.so:system/lib/hw/libqcomfm_if.so \
 	    device/huawei/y210/prebuilt/system/etc/media_profiles.xml:system/etc/media_profiles.xml \
+	    device/huawei/y210/prebuilt/system/etc/media_codecs.xml:system/etc/media_codecs.xml \
 	    device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
 	    device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
-	    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog \
-	    device/huawei/y210/prebuilt/system/app/ProjectMenuAct.apk:system/app/ProjectMenuAct.apk \
-    device/huawei/y210/prebuilt/system/app/ProjectMenuAct.odex:system/app/ProjectMenuAct.odex \
-    device/huawei/y210/prebuilt/system/lib/libprojectmenu.so:system/lib/libprojectmenu.so
+	    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog
 
 # File manager prebuilt — copy FileManager.apk to prebuilt/system/app/ to include in ROM
 # Example: cp ~/EsFileExplorer.apk device/huawei/y210/prebuilt/system/app/FileManager.apk
@@ -131,17 +146,32 @@ PRODUCT_PACKAGES += \
     DeskClock \
     Email \
     Exchange \
-    Gallery2 \
     Music \
     Camera \
     Bluetooth \
     VoiceDialer \
     SoundRecorder \
     SystemUI \
-    Trebuchet \
-    Apollo
+    Trebuchet
 
 PRODUCT_LOCALES += hdpi
+
+# HVGA (320x480, mdpi) phone: drop resource buckets for screen sizes/
+# densities this device can never use (e.g. Trebuchet alone ships ~9.5 MB
+# of sw600dp/sw720dp tablet wallpaper art under its default packaging).
+PRODUCT_AAPT_CONFIG := normal mdpi
+PRODUCT_AAPT_PREF_CONFIG := mdpi
+
+# system.img must fit the Y210's real ~199 MB /system partition (same limit
+# hit on the CM9 side). vendor/cm/config/common.mk unconditionally adds
+# ~19 MB of extra LatinIME language dictionaries plus several apps that
+# aren't needed for bring-up. PRODUCT_PACKAGE_OVERLAYS/PRODUCT_PACKAGES/etc.
+# can't be subtracted from here: Android's product-inheritance system
+# (build/core/node_fns.mk's import-nodes) evaluates each product .mk file's
+# variables in an isolated scope and unions the results at the end, so a
+# filter-out in this file never sees what an inherited file like common.mk
+# already added. The actual trim lives in common.mk itself, gated on
+# TARGET_PRODUCT so it only affects this device.
 
 PRODUCT_BUILD_PROP_OVERRIDES += BUILD_UTC_DATE=0
 PRODUCT_NAME := full_y210
