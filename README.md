@@ -16,7 +16,7 @@ leyendo código.
 | --- | --- |
 | Dispositivo | Huawei Ascend Y210 |
 | Codename | `y210` |
-| SoC | Qualcomm MSM7x27A (ARM11, single core, ~600 MHz) |
+| SoC | Qualcomm MSM7x27A (ARMv7 Cortex-A5, single core, up to 1.008 GHz — confirmed via `cpuinfo_max_freq`) |
 | GPU | Adreno 200 |
 | RAM física | 256 MB (~165 MB usables — el resto lo reserva el firmware ARM9/AMSS antes de que arranque Linux) |
 | Pantalla | HVGA 320x480, mdpi |
