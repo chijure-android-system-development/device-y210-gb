@@ -30,6 +30,8 @@
 #include <sys/stat.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <sys/wait.h>
+#include <linux/i2c.h>
 
 // hardware specific functions
 #include "AudioHardware.h"
@@ -1230,6 +1232,23 @@ status_t AudioHardware::setMicMute_nosync(bool state)
 
 status_t AudioHardware::setParameters(const String8& keyValuePairs)
 {
+    // AudioFlinger::setParameters() calls straight into every registered HAL
+    // device with no initCheck() gate (unlike e.g. getInputBufferSize()).
+    // AudioService's post-crash recovery path (MSG_MEDIA_SERVER_STARTED)
+    // fires AudioSystem.setParameters("restarting=true") as its very first
+    // action on every mediaserver restart -- if that Binder call lands while
+    // this object's constructor (endpoint/IOCTL scan) is still running,
+    // it touches half-initialized members (mSndEndpoints, mNumSndEndpoints,
+    // SND_DEVICE_* still -1) via doRouting() below and corrupts the heap,
+    // which manifests later as an unrelated SIGBUS in some String's
+    // destructor. mInit is only set true at the end of the constructor, so
+    // bail out here until then instead of crashing mediaserver again.
+    if (!mInit) {
+        LOGW("setParameters() called before AudioHardware init complete, ignoring: %s",
+             keyValuePairs.string());
+        return NO_INIT;
+    }
+
     AudioParameter param = AudioParameter(keyValuePairs);
     String8 value;
     String8 key;
@@ -1320,6 +1339,10 @@ status_t AudioHardware::setParameters(const String8& keyValuePairs)
 
 String8 AudioHardware::getParameters(const String8& keys)
 {
+    if (!mInit) {
+        return String8("");
+    }
+
     AudioParameter param = AudioParameter(keys);
     String8 value;
 
@@ -1481,32 +1504,297 @@ status_t AudioHardware::setMasterVolume(float v)
 }
 
 #ifdef HAVE_FM_RADIO
-status_t AudioHardware::setFmOnOff(bool onoff)
-{
-    // Y210 stock stack expects /dev/msm_fm to be opened while FM is active.
-    // Without that, the FM routing can appear "enabled" (SND_DEVICE_FM_*)
-    // but remain silent.
-    mFmRadioEnabled = onoff;
-    LOGI("setFmOnOff: FM %s", onoff ? "on" : "off");
+// bionic's linux/i2c.h has struct i2c_msg + I2C_RDWR but not the i2c-dev.h
+// ioctl payload struct (i2c-dev.h isn't shipped) -- declared here to match
+// the real kernel header.
+struct i2c_rdwr_ioctl_data {
+    struct i2c_msg *msgs;
+    uint32_t nmsgs;
+};
+#ifndef I2C_RDWR
+#define I2C_RDWR 0x0707
+#endif
 
-    if (onoff) {
-        if (fmfd < 0) {
-            fmfd = open("/dev/msm_fm", O_RDWR);
-            if (fmfd < 0) {
-                LOGE("Cannot open FM_DEVICE (/dev/msm_fm) errno: %d", errno);
+static status_t i2c1_write_reg(int fd, uint8_t reg, uint8_t value)
+{
+    uint8_t buf[2] = { reg, value };
+    struct i2c_msg msg;
+    msg.addr = 0x0c;
+    msg.flags = 0;
+    msg.len = 2;
+    msg.buf = buf;
+
+    struct i2c_rdwr_ioctl_data data;
+    data.msgs = &msg;
+    data.nmsgs = 1;
+
+    if (ioctl(fd, I2C_RDWR, &data) < 0) {
+        return -errno;
+    }
+    return NO_ERROR;
+}
+
+// Read-back verification: the write above reports success at the ioctl/ACK
+// level, but that only means the Marimba chip accepted the transaction --
+// it doesn't prove the value actually stuck.
+static status_t i2c1_read_reg(int fd, uint8_t reg, uint8_t *value)
+{
+    struct i2c_msg msgs[2];
+    msgs[0].addr = 0x0c;
+    msgs[0].flags = 0;
+    msgs[0].len = 1;
+    msgs[0].buf = &reg;
+    msgs[1].addr = 0x0c;
+    msgs[1].flags = I2C_M_RD;
+    msgs[1].len = 1;
+    msgs[1].buf = value;
+
+    struct i2c_rdwr_ioctl_data data;
+    data.msgs = msgs;
+    data.nmsgs = 2;
+
+    if (ioctl(fd, I2C_RDWR, &data) < 0) {
+        return -errno;
+    }
+    return NO_ERROR;
+}
+
+// Reverse-engineered from stock libaudio.so's switch_mode()/"BTFMPinSwitching",
+// confirmed against the real CAF source (dzo/hardware_qcomm_media,
+// audio/msm7627a/HardwarePinSwitching.c) -- byte-for-byte match. The chip's
+// FM I2S pins (0x8e-0x90) and BT AUX-PCM pins (0x88-0x8b) are mutually
+// exclusive on this shared bus: exactly one side is active (0x40) while the
+// other is tristated (0x15).
+#define MODE_FM 0
+#define MODE_BTSCO 1
+
+// Called AFTER do_route_audio_rpc() succeeds, not before, and only on an
+// actual transition into/out of an FM device (not on every fmOn()/route
+// call) -- see doAudioRouteOrMute() below.
+static status_t run_btfm_pin_switch(int mode)
+{
+    int fd = open("/dev/i2c-1", O_RDWR);
+    if (fd < 0) {
+        LOGE("BTFMPinSwitching: open /dev/i2c-1 failed: %s", strerror(errno));
+        return -errno;
+    }
+
+    // mode==MODE_FM: tristate BT pins, activate FM I2S pins.
+    // mode==MODE_BTSCO: tristate FM I2S pins, activate BT pins.
+    uint8_t btVal = (mode == MODE_FM) ? 0x15 : 0x40;
+    uint8_t fmVal = (mode == MODE_FM) ? 0x40 : 0x15;
+    status_t err = NO_ERROR;
+    for (uint8_t reg = 0x88; reg < 0x8c && err == NO_ERROR; reg++) {
+        err = i2c1_write_reg(fd, reg, btVal);
+    }
+    for (uint8_t reg = 0x8e; reg < 0x91 && err == NO_ERROR; reg++) {
+        err = i2c1_write_reg(fd, reg, fmVal);
+    }
+
+    if (err == NO_ERROR) {
+        for (uint8_t reg = 0x88; reg < 0x8c; reg++) {
+            uint8_t readback = 0xFF;
+            if (i2c1_read_reg(fd, reg, &readback) == NO_ERROR) {
+                LOGI("BTFMPinSwitching: readback reg 0x%02x = 0x%02x (expected 0x%02x)",
+                        reg, readback, btVal);
             } else {
-                fcntl(fmfd, F_SETFD, FD_CLOEXEC);
-                LOGI("Opened FM_DEVICE (/dev/msm_fm) fd=%d", fmfd);
+                LOGE("BTFMPinSwitching: readback reg 0x%02x failed: %s", reg, strerror(errno));
             }
         }
-    } else {
-        if (fmfd >= 0) {
-            close(fmfd);
-            fmfd = -1;
-            LOGI("Closed FM_DEVICE (/dev/msm_fm)");
+        for (uint8_t reg = 0x8e; reg < 0x91; reg++) {
+            uint8_t readback = 0xFF;
+            if (i2c1_read_reg(fd, reg, &readback) == NO_ERROR) {
+                LOGI("BTFMPinSwitching: readback reg 0x%02x = 0x%02x (expected 0x%02x)",
+                        reg, readback, fmVal);
+            } else {
+                LOGE("BTFMPinSwitching: readback reg 0x%02x failed: %s", reg, strerror(errno));
+            }
         }
     }
 
+    close(fd);
+
+    if (err != NO_ERROR) {
+        LOGE("BTFMPinSwitching: switch mode failed with error:%d", err);
+    } else {
+        LOGI("BTFMPinSwitching: switch mode(%d) succeeded", mode);
+    }
+    return err;
+}
+
+// Live comparison against a real stock Y210 with working FM audio: a full
+// 0x00-0xff I2C dump of the Marimba chip (0x0c), taken with FM genuinely
+// playing on both a stock device and a device without this fix, showed
+// these registers set on stock but left at 0x00 (untouched) otherwise. They
+// belong to the ADIE codec analog-path profile tables in the kernel's
+// snddev_data_marimba.c/marimba_profile.h for SNDDEV_CAP_FM devices -- the
+// actual analog audio output stage for FM. Normally the ARM9/DSP firmware
+// applies these via the snd_set_device RPC, invisible from Linux; writing
+// them directly over /dev/i2c-1 (already proven safe/working for the
+// BT/FM pin-switch above) bypasses that and applies the known-good
+// end-state values directly.
+static status_t run_fm_audio_path_enable(void)
+{
+    int fd = open("/dev/i2c-1", O_RDWR);
+    if (fd < 0) {
+        LOGE("FmAudioPathEnable: open /dev/i2c-1 failed: %s", strerror(errno));
+        return -errno;
+    }
+
+    static const struct { uint8_t reg; uint8_t value; } regs[] = {
+        { 0x11, 0x0c },
+        { 0x13, 0x01 },
+        { 0x81, 0x00 },
+        { 0x82, 0x00 },
+        { 0xe6, 0x38 },
+        { 0xe7, 0x06 },
+        { 0xe9, 0x21 },
+    };
+
+    status_t err = NO_ERROR;
+    for (size_t i = 0; i < sizeof(regs) / sizeof(regs[0]) && err == NO_ERROR; i++) {
+        err = i2c1_write_reg(fd, regs[i].reg, regs[i].value);
+    }
+
+    for (size_t i = 0; i < sizeof(regs) / sizeof(regs[0]); i++) {
+        uint8_t readback = 0xFF;
+        if (i2c1_read_reg(fd, regs[i].reg, &readback) == NO_ERROR) {
+            LOGI("FmAudioPathEnable: readback reg 0x%02x = 0x%02x (expected 0x%02x)",
+                    regs[i].reg, readback, regs[i].value);
+        } else {
+            LOGE("FmAudioPathEnable: readback reg 0x%02x failed: %s", regs[i].reg, strerror(errno));
+        }
+    }
+
+    close(fd);
+
+    if (err != NO_ERROR) {
+        LOGE("FmAudioPathEnable: failed with error:%d", err);
+    } else {
+        LOGI("FmAudioPathEnable: succeeded");
+    }
+    return err;
+}
+
+// SND_DEVICE_FM_* are per-instance members (resolved at runtime from the
+// endpoint table in get_sound_endpoints()), not static constants, so this
+// needs the values passed in rather than reading them off the class.
+// Y210 only has the digital FM endpoints wired (confirmed: the analog
+// output stage isn't connected on this board), so no ANALOG variants here.
+static bool is_fm_snd_device(int32_t device, int32_t fmHeadset, int32_t fmSpeaker)
+{
+    return device == fmHeadset || device == fmSpeaker;
+}
+
+// Runs "fm_qsoc_patches <version> 3 <isAnalog>" -- the "config_dac" mode
+// from stock's init.qcom.fm.sh (case "config_dac"). Confirmed present in
+// our own fm_qsoc_patches binary too (same FmDacCodecAnalogConfig/
+// FmDacCodecDigitalConfig/"In DAC config mode" strings as the stock
+// binary). Distinct from the mode-0 call fminit makes at tuner power-up:
+// mode 0 downloads RF calibration firmware over I2C, mode 3 separately
+// configures the WCN2243's own DAC/audio-output pin -- the piece the
+// RPC-only routing (rpc_snd_set_device) never touches.
+static status_t run_fm_dac_config(bool enable)
+{
+    char version[PROPERTY_VALUE_MAX];
+    property_get("hw.fm.version", version, "");
+    if (version[0] == '\0') {
+        return -EINVAL;
+    }
+
+    char isAnalogProp[PROPERTY_VALUE_MAX];
+    property_get("hw.fm.isAnalog", isAnalogProp, "false");
+    bool isAnalog = (strcmp(isAnalogProp, "true") == 0 || strcmp(isAnalogProp, "1") == 0);
+
+    char * const argv[] = {
+        (char *)"/system/bin/fm_qsoc_patches",
+        version,
+        (char *)"3",
+        (char *)(isAnalog ? "true" : "false"),
+        NULL
+    };
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        LOGE("fm_qsoc_patches config_dac: fork failed: %s", strerror(errno));
+        return -errno;
+    }
+    if (pid == 0) {
+        execv("/system/bin/fm_qsoc_patches", argv);
+        _exit(1);
+    }
+
+    int status = 0;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        LOGI("fm_qsoc_patches config_dac(%s) succeeded", isAnalog ? "analog" : "digital");
+        return NO_ERROR;
+    }
+    LOGE("fm_qsoc_patches config_dac(%s) failed, exit status %d",
+            isAnalog ? "analog" : "digital", status);
+    return -EIO;
+}
+
+// /dev/msm_fm (qdsp5/audio_fm.c) is a thin ioctl-only driver: AUDIO_START/
+// AUDIO_STOP just tell the kernel to call audmgr_enable()/audmgr_disable()
+// (RPC to the ARM9) to register an audio session -- no PCM is ever written
+// to this fd. This is the piece that actually makes the ARM9/DSP open the
+// real audio session; without it the I2S/RPC/pin-switch config is all
+// correct but the DSP never receives the "start" signal, producing FM
+// silence (or, if the pin-switch is wrong too, a floating-pin noise floor).
+static status_t run_fm_audmgr_session(int *fmfd, bool onoff)
+{
+    if (onoff) {
+        if (*fmfd >= 0) {
+            return NO_ERROR;
+        }
+        int fd = open("/dev/msm_fm", O_RDWR);
+        if (fd < 0) {
+            LOGE("run_fm_audmgr_session: open /dev/msm_fm failed: %s", strerror(errno));
+            return -errno;
+        }
+        if (ioctl(fd, AUDIO_START, 0) < 0) {
+            LOGE("run_fm_audmgr_session: AUDIO_START failed: %s", strerror(errno));
+            close(fd);
+            return -errno;
+        }
+        LOGI("run_fm_audmgr_session: AUDIO_START succeeded");
+        *fmfd = fd;
+        return NO_ERROR;
+    }
+
+    if (*fmfd >= 0) {
+        if (ioctl(*fmfd, AUDIO_STOP, 0) < 0) {
+            LOGE("run_fm_audmgr_session: AUDIO_STOP failed: %s", strerror(errno));
+        } else {
+            LOGI("run_fm_audmgr_session: AUDIO_STOP succeeded");
+        }
+        close(*fmfd);
+        *fmfd = -1;
+    }
+    return NO_ERROR;
+}
+
+status_t AudioHardware::setFmOnOff(bool onoff)
+{
+    mFmRadioEnabled = onoff;
+    LOGI("setFmOnOff: FM %s", onoff ? "on" : "off");
+    // FM digital audio flows WCN2243 I2S -> MSM7x27A -> codec via
+    // rpc_snd_set_device(26/27), with run_fm_audmgr_session() opening
+    // /dev/msm_fm to register the audmgr session -- matching the order
+    // seen in a real working stock Y210's dmesg (audmgr_enable() -> RPC
+    // READY -> RPC CODEC_CONFIG(volume=...) -> rpc_snd_set_device(26,0,0)).
+    if (onoff) {
+        // config_dac matches stock's real behavior (confirmed via
+        // disassembly); harmless if not strictly required.
+        run_fm_dac_config(true);
+        run_fm_audmgr_session(&fmfd, true);
+        // BTFMPinSwitching (run_btfm_pin_switch) happens from
+        // doAudioRouteOrMute(), after the RPC and gated on an actual
+        // device transition -- matching the CAF reference order.
+    } else {
+        run_fm_audmgr_session(&fmfd, false);
+    }
     return NO_ERROR;
 }
 #endif
@@ -1577,6 +1865,25 @@ status_t AudioHardware::doAudioRouteOrMute(int32_t device)
     if (mFmRadioEnabled) {
         mute = 0;
         LOGI("unmute for radio");
+        // FM audio path: mic_mute must be 0 (same as stock snd_set_device 26 0 0).
+        // With mic_mute=1 the modem DSP does not open the FM I2S->codec path.
+        LOGD("doAudioRouteOrMute() device %s, mMode %d, mMicMute %d, mBuiltinMicSelected %d, %s",
+            get_sound_device(device), mMode, mMicMute, mBuiltinMicSelected, "audio circuit active");
+        status_t rc = do_route_audio_rpc(device, mute, false);
+        // Pin-switch AFTER the RPC (matches the CAF reference order), and
+        // only on an actual transition into the FM device (mCurSndDevice
+        // still holds the *previous* device here -- the caller updates it
+        // after this function returns).
+        if (is_fm_snd_device(device, SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER)
+                && device != mCurSndDevice) {
+            run_btfm_pin_switch(MODE_FM);
+            run_fm_audio_path_enable();
+        }
+        return rc;
+    } else if (is_fm_snd_device(mCurSndDevice, SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER)
+            && !is_fm_snd_device(device, SND_DEVICE_FM_HEADSET, SND_DEVICE_FM_SPEAKER)) {
+        // Leaving FM for a non-FM device: give the BT AUX-PCM pins back.
+        run_btfm_pin_switch(MODE_BTSCO);
     }
 #endif
     LOGD("doAudioRouteOrMute() device %s, mMode %d, mMicMute %d, mBuiltinMicSelected %d, %s",
@@ -2480,21 +2787,20 @@ status_t AudioHardware::AudioStreamInMSM72xx::setParameters(const String8& keyVa
 
 #ifdef HAVE_FM_RADIO
 
+// No AudioSystem::STREAM_FM in this tree (FM volume rides STREAM_MUSIC, see
+// packages/apps/FM's FMRadio.java), so this virtual override isn't actually
+// reached by AudioFlinger today -- kept implemented (rather than a stub) in
+// case that changes. The previous implementation here (`hcitool cmd 0x3f
+// 0x15 ...` + AudioSystemLegacy::logToLinear(), neither of which apply to
+// this hardware/tree) was a leftover from a Broadcom-chip FM reference this
+// device never used; this device's FM output goes through the same
+// snd_set_device RPC/codec path as every other stream, so route volume the
+// same way setMasterVolume() does.
 status_t AudioHardware::setFmVolume(float v)
 {
-    unsigned int VolValue = (unsigned int)(AudioSystemLegacy::logToLinear(v));
-    int volume = (unsigned int)(VolValue*VolValue/100);
-
-    char volhex[10] = "";
-    sprintf(volhex, "0x%x ", volume);
-    char volreg[100] = "hcitool cmd 0x3f 0x15 0xf8 0x0 ";
-
-    strcat(volreg, volhex);
-    strcat(volreg, "0");
-
-    system(volreg);
-
-    return NO_ERROR;
+    int vol = ceil(v * 6.0);
+    LOGI("Set FM volume to %d.", vol);
+    return set_volume_rpc(SND_DEVICE_CURRENT, SND_METHOD_VOICE, vol);
 }
 #endif
 
