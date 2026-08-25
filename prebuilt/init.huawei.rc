@@ -28,16 +28,21 @@
 import /init.y210.rc
 import /init.mem.rc
 
-# vold mounts the external card onto /mnt/sdcard, so that mount point has to
-# exist as a real directory, and legacy apps expect /sdcard to exist as a
+# vold mounts the external card onto /storage/sdcard0 (see vold.fstab --
+# this is the path JB's MountService/StorageManager actually recognize as
+# the primary external volume; the old ICS-era /mnt/sdcard is kept as a
+# compat symlink for anything still hardcoding it), so that mount point has
+# to exist as a real directory, and legacy apps expect /sdcard to exist as a
 # symlink to it. This has to run in "on init" (like the platform's own
 # /mnt/asec, /mnt/obb, etc.), NOT "on boot" -- by the time "on boot" fires,
 # system/core/rootdir/init.rc's "on post-fs" has already remounted the
 # rootfs read-only ("mount rootfs rootfs / ro remount"), so a mkdir there
-# fails silently and /mnt/sdcard never gets created.
+# fails silently and /storage/sdcard0 never gets created.
 on init
-    mkdir /mnt/sdcard 0000 system system
-    symlink /mnt/sdcard /sdcard
+    mkdir /storage 0751 root root
+    mkdir /storage/sdcard0 0000 system system
+    symlink /storage/sdcard0 /sdcard
+    symlink /storage/sdcard0 /mnt/sdcard
 
 on boot-pause
     exec system/bin/battery_charging
@@ -486,11 +491,18 @@ service qcom-wifi /system/bin/sh /system/etc/init.qcom.wifi.sh
 on property:init.svc.bootanim=stopped
     start qcom-wifi
     start qcom-post-boot
-    # Re-apply the 256 MB Y210 LMK profile after the core init.rc defaults.
+    # Re-apply the tuned ~165MB-usable-RAM LMK profile (see init.mem.rc /
+    # PERFORMANCE_NOTES.md) after the core init.rc defaults. This trigger
+    # fires right as boot finishes and Home is displayed; it used to
+    # re-write the stock Huawei 256MB-physical-RAM thresholds here,
+    # silently undoing init.mem.rc's tuning at exactly the moment the
+    # launcher becomes foreground -- causing a background-kill loop on
+    # Home (32MB background threshold vs the stock 24MB) once CM10/JB's
+    # heavier memory footprint made the gap matter.
     write /sys/module/lowmemorykiller/parameters/adj 0,2,4,6,7,15
     write /proc/sys/vm/overcommit_memory 1
     write /proc/sys/vm/min_free_order_shift 4
-    write /sys/module/lowmemorykiller/parameters/minfree 1536,2048,3072,4096,5120,6144
+    write /sys/module/lowmemorykiller/parameters/minfree 1536,2048,3072,5120,6144,8192
 
 service atfwd /system/bin/ATFWD-daemon
     user system

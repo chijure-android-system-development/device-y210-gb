@@ -25,7 +25,7 @@ loglevel 3
     export ANDROID_DATA /data
     export ASEC_MOUNTPOINT /mnt/asec
     export LOOP_MOUNTPOINT /mnt/obb
-    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/filterfw.jar
+    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/framework2.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/filterfw.jar
 
 # Backward compatibility
     symlink /system/etc /etc
@@ -63,6 +63,11 @@ loglevel 3
     mkdir /mnt/obb 0700 root system
     mount tmpfs tmpfs /mnt/obb mode=0755,gid=1000
 
+    # /storage/sdcard0 itself is created in init.huawei.rc's "on init"
+    # (see its comment for why "on init" and not "on boot"), alongside the
+    # /sdcard and /mnt/sdcard compat symlinks -- kept in one place to avoid
+    # two "on init" blocks racing to create/symlink the same path.
+
     write /proc/sys/kernel/panic_on_oops 1
     write /proc/sys/kernel/hung_task_timeout_secs 0
     write /proc/cpu/alignment 4
@@ -90,6 +95,26 @@ loglevel 3
     chmod 0777 /dev/cpuctl/bg_non_interactive/tasks
     # 5.0 %
     write /dev/cpuctl/bg_non_interactive/cpu.shares 52
+
+    # system/core/libcutils/sched_policy.c on this JB tree hardcodes
+    # /dev/cpuctl/apps/tasks (foreground) and
+    # /dev/cpuctl/apps/bg_non_interactive/tasks (background) -- this ICS-era
+    # init.rc only ever created the two groups directly under /dev/cpuctl
+    # (above), so libcutils' cgroup fds never opened and every single
+    # Process.setThreadPriority() call in every process silently failed to
+    # join a scheduler group ("add_tid_to_cgroup failed" spam since boot).
+    # Usually harmless (best-effort), but callers of the raw one-arg
+    # setThreadPriority(prio) can get a real IllegalArgumentException back
+    # from the failed native call (hit this via Trebuchet's LauncherModel).
+    mkdir /dev/cpuctl/apps
+    chown system system /dev/cpuctl/apps/tasks
+    chmod 0666 /dev/cpuctl/apps/tasks
+    write /dev/cpuctl/apps/cpu.shares 1024
+
+    mkdir /dev/cpuctl/apps/bg_non_interactive
+    chown system system /dev/cpuctl/apps/bg_non_interactive/tasks
+    chmod 0666 /dev/cpuctl/apps/bg_non_interactive/tasks
+    write /dev/cpuctl/apps/bg_non_interactive/cpu.shares 52
 
 # Allow everybody to read the xt_qtaguid resource tracking misc dev.
 # This is needed by any process that uses socket tagging.
@@ -413,6 +438,7 @@ service netd /system/bin/netd
     class main
     socket netd stream 0660 root system
     socket dnsproxyd stream 0660 root inet
+    socket mdns stream 0660 root system
 
 service debuggerd /system/bin/debuggerd
     class main

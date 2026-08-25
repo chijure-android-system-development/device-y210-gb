@@ -28,6 +28,14 @@
 #/*<DTS2011100400385 fangxinyong 20111020 begin */
 # dev_mount sdcard /mnt/sdcard auto /devices/platform/msm_sdcc.1/mmc_host /devices/platform/msm_sdcc.3/mmc_host
 # this is only for nand flash
-dev_mount sdcard2 /mnt/sdcard auto /devices/platform/msm_sdcc.1/mmc_host
-dev_mount sdcard1 /mnt/sdcard auto /devices/virtual/mtd/mtd7/mtdblock7
+#
+# Mount point changed from the ICS-era /mnt/sdcard to /storage/sdcard0:
+# this JB framework's MountService/StorageManager (and apps like Gallery2's
+# camera storage check) look specifically for /storage/sdcard0 as the
+# primary external storage volume -- /mnt/sdcard (still created as a
+# compat symlink in init.rc) isn't recognized, so the camera refused to
+# start with "No external storage available" even though the SD card
+# itself was detected and mountable fine.
+dev_mount sdcard2 /storage/sdcard0 auto /devices/platform/msm_sdcc.1/mmc_host
+dev_mount sdcard1 /storage/sdcard0 auto /devices/virtual/mtd/mtd7/mtdblock7
 #/* DTS2011100400385 fangxinyong 20111020 end >*/
