@@ -1,15 +1,35 @@
 # FM Radio (Y210) — CM9/ICS
 
-## Estado CM9 (2026-06-03)
+## Estado CM9 (2026-06-06)
 
 | Función | Estado |
 |---|---|
 | Init / calibración (`hw.fm.init`) | **Parcial** — OK en CM7; sin validar en CM9 |
-| Audio FM en auriculares | **Pendiente** |
+| App de radio | **OK** — `FM.apk` incluido como app de sistema y abre en CM9 |
+| Framework Qualcomm FM | **OK** — clases `android.hardware.fmradio.*` y JNI V4L2 registrados |
+| Init / calibración en CM9 (`fm_dl`) | **Pendiente** — `hw.fm.init=0` en la prueba actual |
+| Audio FM en auriculares | **Pendiente** — depende de completar init/calibración |
 
 Los fixes de `init.qcom.fm.sh`, routing de audio y V4L2 mute se aplicaron en CM7.
 En CM9 la pila de audio cambió (ICS audio HAL), validar que el routing de FM
 sigue funcionando con la nueva arquitectura `audio.primary.y210.so`.
+
+La ROM CM9 no traía frontend FM en `packages/apps`, por eso no aparecía ninguna
+app para probar la radio. Se incluye el `FM.apk` de CM7 como prebuilt porque usa
+la misma API Qualcomm `android.hardware.fmradio.*` que está portada en este
+árbol CM9.
+
+Validación en caliente:
+
+- `com.android.fm` queda registrado en PackageManager.
+- La actividad `com.android.fm/.radio.FMRadio` abre sin crash.
+- El JNI `fmradio_qcom` abre `/dev/radio0`.
+- Sin audífonos conectados, la app reporta `isAntennaAvailable: false`, así que
+  la prueba de recepción/audio queda pendiente con antena real.
+- Con audífonos conectados la app detecta antena, pero la prueba actual mostró
+  `VIDIOC_S_CTRL ... Timer expired` / `No Tune response` y `hw.fm.init=0`. Si se
+  corre `fm_dl` mientras la app está abierta, `/dev/radio0` queda ocupado; cerrar
+  la app antes de revalidar init.
 
 ---
 

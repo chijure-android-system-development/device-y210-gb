@@ -28,6 +28,17 @@
 import /init.y210.rc
 import /init.mem.rc
 
+# vold mounts the external card onto /mnt/sdcard, so that mount point has to
+# exist as a real directory, and legacy apps expect /sdcard to exist as a
+# symlink to it. This has to run in "on init" (like the platform's own
+# /mnt/asec, /mnt/obb, etc.), NOT "on boot" -- by the time "on boot" fires,
+# system/core/rootdir/init.rc's "on post-fs" has already remounted the
+# rootfs read-only ("mount rootfs rootfs / ro remount"), so a mkdir there
+# fails silently and /mnt/sdcard never gets created.
+on init
+    mkdir /mnt/sdcard 0000 system system
+    symlink /mnt/sdcard /sdcard
+
 on boot-pause
     exec system/bin/battery_charging
 

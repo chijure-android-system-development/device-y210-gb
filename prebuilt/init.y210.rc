@@ -11,7 +11,8 @@
     #DTS2012010905526 xueyongxin 20120109 end
 
 # Legacy sdcard symlink kept for Gingerbread compatibility.
-    symlink /mnt/sdcard /sdcard
+# (mkdir /mnt/sdcard + the real symlink now live in init.huawei.rc's "on boot",
+# which is imported before this file — see README.md's Storage section.)
 
     mkdir /system
     mkdir /data 0771 system system
@@ -205,7 +206,10 @@ on cust
     chown smartcard smartcard /dev/assd
 
 on boot
-    export LD_PRELOAD /system/lib/libcamera_compat.so
+# libcamera_compat.so wrapper deshabilitado desde 2026-08-01 (camara movida a
+# fuente CAF, ver device/huawei/y210/libcamera/Android.mk); la lib nunca se
+# compila, este LD_PRELOAD global rompia el link de TODO proceso post-boot.
+#    export LD_PRELOAD /system/lib/libcamera_compat.so
 # /*< DTS2011111900490 zhangyancun 201119 begin */
 # /* modify the open file maximum to 2048 */
     setrlimit 7 2048 2048

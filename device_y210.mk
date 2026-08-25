@@ -34,9 +34,11 @@ PRODUCT_PACKAGES += \
     audio_policy.msm7x27a
 
 # Camera
+# libcamera_compat is only built when BUILD_Y210_BLOB_CAMERA_WRAPPER=true
+# (see device/huawei/y210/libcamera/Android.mk) — not part of the active
+# camera.y210 build, which now comes from libcamera-caf/.
 PRODUCT_PACKAGES += \
-    camera.y210 \
-    libcamera_compat
+    camera.y210
 
 # Other
 PRODUCT_PACKAGES += \
@@ -55,6 +57,7 @@ PRODUCT_COPY_FILES += \
     frameworks/base/data/etc/android.hardware.touchscreen.multitouch.distinct.xml:system/etc/permissions/android.hardware.touchscreen.multitouch.distinct.xml
 
 PRODUCT_COPY_FILES += \
+    device/huawei/y210/init.rc:root/init.rc \
     device/huawei/y210/prebuilt/init.huawei.rc:root/init.huawei.rc \
     device/huawei/y210/prebuilt/init.target.rc:root/init.target.rc \
     device/huawei/y210/prebuilt/init.y210.rc:root/init.y210.rc \
@@ -79,7 +82,6 @@ PRODUCT_COPY_FILES += \
 	    device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
 	    device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
 	    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog \
-	    device/huawei/y210/prebuilt/system/app/FM.apk:system/app/FM.apk \
 	    device/huawei/y210/prebuilt/system/app/ProjectMenuAct.apk:system/app/ProjectMenuAct.apk \
     device/huawei/y210/prebuilt/system/app/ProjectMenuAct.odex:system/app/ProjectMenuAct.odex \
     device/huawei/y210/prebuilt/system/lib/libprojectmenu.so:system/lib/libprojectmenu.so

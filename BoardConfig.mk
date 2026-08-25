@@ -134,3 +134,7 @@ BOARD_VOLD_EMMC_SHARES_DEV_MAJOR := true
 BOARD_UMS_LUNFILE := /sys/devices/platform/usb_mass_storage/lun0/file
 
 COMMON_GLOBAL_CFLAGS += -DREFRESH_RATE=60
+
+# We ship our own root init.rc (device/huawei/y210/init.rc) so it can import
+# init.${ro.hardware}.rc / .usb.rc without touching system/core/rootdir/init.rc.
+TARGET_PROVIDES_INIT_RC := true
