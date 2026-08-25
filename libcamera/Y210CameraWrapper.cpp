@@ -390,6 +390,8 @@ static int y210_msg_type_enabled(camera_device_t* /*dev*/, int32_t msg)
     return gCamera->msgTypeEnabled(msg) ? 1 : 0;
 }
 
+static bool sMapMemoryVtablePatched = false;
+
 static int y210_start_preview(camera_device_t* /*dev*/)
 {
     LOGI("Y210: start_preview");
@@ -414,8 +416,17 @@ static int y210_start_preview(camera_device_t* /*dev*/)
      *   vtable[7]  = mapMemory = file 0x27224 → our patch target
      *   vtable[11] = createMemory = file 0x27234
      *   MemoryHeapPmemD1Ev at file 0x1dbd4
-     */
-    {
+     *
+     * This only needs to run ONCE per process: libbinder.so's load address and
+     * vtable layout are fixed for the lifetime of mediaserver, so redoing the
+     * dlsym()+mprotect()+vtable-write on every start_preview() (i.e. on every
+     * photo, since the app calls startPreview() again right after each capture)
+     * just re-races the linker's non-thread-safe dlopen/dlsym/dlerror path
+     * against whatever the blob's own snapshot/jpeg worker threads are doing
+     * at that exact moment (dlclose of libimageprocess.so etc during postview
+     * teardown) — see [[issue_camera_capture_crash]] Bug 3 (SIGSEGV in
+     * __dl_format_buffer). Guard it so it only executes on the first call. */
+    if (!sMapMemoryVtablePatched) {
         void* mhpd1 = dlsym(RTLD_DEFAULT, "_ZN7android14MemoryHeapPmemD1Ev");
         if (mhpd1) {
             uintptr_t libbinder_base = ((uintptr_t)mhpd1 & ~1u) - 0x1dbd4u;
@@ -437,6 +448,7 @@ static int y210_start_preview(camera_device_t* /*dev*/)
             mprotect((void*)page, 4096, PROT_READ | PROT_EXEC);
             LOGI("Y210: vtable[7] patched → our mapMemory stub 0x%x",
                  (unsigned)stub);
+            sMapMemoryVtablePatched = true;
         } else {
             LOGE("Y210: MemoryHeapPmemD1 not found: %s", dlerror());
         }

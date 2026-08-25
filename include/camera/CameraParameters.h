@@ -14,6 +14,13 @@
  * limitations under the License.
  */
 
+/* Whole-file guard: the outer ANDROID_HARDWARE_CAMERA_PARAMETERS_H #ifndef
+ * below only spans lines 17-945 (a bug — closes before the embedded Overlay
+ * class at the end of this file). #pragma once protects the entire file
+ * regardless of that internal structure, which matters now that this header
+ * gets #include'd more than once per translation unit. */
+#pragma once
+
 #ifndef ANDROID_HARDWARE_CAMERA_PARAMETERS_H
 #define ANDROID_HARDWARE_CAMERA_PARAMETERS_H
 

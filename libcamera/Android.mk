@@ -1,5 +1,10 @@
 LOCAL_PATH := $(call my-dir)
 
+# DISABLED 2026-08-01: replaced by ../libcamera-caf/ (camera.y210 built from
+# CAF reference source instead of wrapping the closed libcamera.y210.so blob).
+# Files kept on disk for reference/revert; not built while this guard is off.
+ifeq ($(BUILD_Y210_BLOB_CAMERA_WRAPPER),true)
+
 # libcamera_compat.so — GB→ICS symbol stubs, loaded RTLD_GLOBAL before the blob
 include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS        := optional
@@ -35,3 +40,5 @@ LOCAL_C_INCLUDES := \
     hardware/libhardware/modules/gralloc
 
 include $(BUILD_SHARED_LIBRARY)
+
+endif # BUILD_Y210_BLOB_CAMERA_WRAPPER
