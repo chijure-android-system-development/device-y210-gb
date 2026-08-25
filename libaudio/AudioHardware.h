@@ -197,6 +197,9 @@ class AudioHardware : public  AudioHardwareBase {
 		// create I/O streams
 		virtual AudioStreamOut* openOutputStream(
 									uint32_t devices,
+#ifdef QCOM_HARDWARE
+									audio_output_flags_t flags=(audio_output_flags_t)0,
+#endif
 									int *format=0,
 									uint32_t *channels=0,
 									uint32_t *sampleRate=0,

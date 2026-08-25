@@ -32,4 +32,7 @@ LOCAL_CFLAGS += -include bionic/libc/kernel/common/linux/socket.h
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE := camera.$(TARGET_BOOTLOADER_BOARD_NAME)
 LOCAL_MODULE_TAGS := optional
+# Same GNU_RELRO/HAL_MODULE_INFO_SYM layout hazard fixed for liblights —
+# see device/huawei/y210/liblights/Android.mk for the full explanation.
+LOCAL_LDFLAGS += -Wl,-z,norelro
 include $(BUILD_SHARED_LIBRARY)

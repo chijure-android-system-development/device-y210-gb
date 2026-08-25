@@ -27,6 +27,12 @@ LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 
 LOCAL_SHARED_LIBRARIES := liblog
 
+# HAL_MODULE_INFO_SYM (a const struct with a pointer field, so it lands in
+# .data.rel.ro) happened to link into this .so's GNU_RELRO-protected range;
+# load()'s `hmi->dso = handle` then writes into that now-read-only page and
+# SIGSEGVs (SEGV_ACCERR). -z,norelro avoids depending on link-layout luck.
+LOCAL_LDFLAGS += -Wl,-z,norelro
+
 LOCAL_MODULE := lights.y210
 
 include $(BUILD_SHARED_LIBRARY)

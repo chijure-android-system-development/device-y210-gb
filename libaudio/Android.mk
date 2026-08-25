@@ -111,6 +111,9 @@ LOCAL_C_INCLUDES += \
 LOCAL_MODULE := audio.primary.y210
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE_TAGS := optional
+# Same GNU_RELRO/HAL_MODULE_INFO_SYM layout hazard fixed for liblights —
+# see device/huawei/y210/liblights/Android.mk for the full explanation.
+LOCAL_LDFLAGS += -Wl,-z,norelro
 
 ifeq ($(BOARD_HAVE_BLUETOOTH),true)
   LOCAL_CFLAGS += -DWITH_A2DP
