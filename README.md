@@ -30,15 +30,19 @@ leyendo código.
 | Subsistema | Estado | Notas |
 | --- | --- | --- |
 | Boot / system_server | ✅ OK | Arranque completo y estable, sin crash-loops |
-| RIL / baseband | ✅ OK | `rild` corriendo, baseband `109808`, registro de operador confirmado |
+| RIL / baseband | ✅ OK | `rild` corriendo, baseband `109808`, registro de operador real confirmado ("Claro" en pantalla de bloqueo) |
 | Sensores | ✅ OK | Acelerómetro LIS3DH reportando datos reales |
-| Audio | ✅ OK | Confirmado audible tras el fix de `media_codecs.xml` |
+| Audio (salida) | ✅ OK | Confirmado audible tras el fix de `media_codecs.xml` |
+| Audio (micrófono) | ❌ Roto (seguro) | `AudioPolicyManagerBase::getInputProfile()` nunca matchea un perfil de entrada, causa raíz sin confirmar — pero ya NO congela/paniquea el sistema (antes sí), falla limpio a nivel de app |
 | Cámara (preview) | ✅ OK | Preview en vivo funcional, HAL `camera.y210` carga bien |
 | Cámara (captura) | ❌ Roto | Falla en el driver nativo Qualcomm al tomar la foto (`register_buffers`/`native_start_ops`: Operation not permitted) — pendiente |
-| Almacenamiento externo | ✅ OK | SD real detectada y montada en `/storage/sdcard0` |
-| WiFi | ⚠️ Parcial | `wpa_supplicant` corre, "Wi-Fi is enabled", pero interfaz aparece como `eth0` en vez de `wlan0` — sin confirmar conexión end-to-end |
-| Bluetooth | ⚠️ Parcial | Daemons arrancan pero JSR-82/rfcomm (PBAP/OPP) falla en loop — feature MTK-only ausente en este hardware no-MTK |
+| Almacenamiento externo | ✅ OK | SD real detectada y montada en `/storage/sdcard0`, confirmada con archivos reales del usuario |
+| WiFi | ✅ OK | Confirmado end-to-end: conexión real (WPA2), DHCP, DNS, ping a internet, navegación web real en Browser |
+| Bluetooth (JSR-82/rfcomm) | ✅ OK | `BluetoothSocket` ruteado por el path BlueZ real (`FeatureOption.MTK_BT_PROFILE_SPP=false`) — sockets RFCOMM (OPP/PBAP) ya no fallan |
+| Bluetooth (descubrimiento real) | ⚠️ Parcial | El chip Broadcom ahora recibe comandos HCI reales (antes: silencio total) tras redirigir a `init.bcm.bt.sh`, pero `brcm_patchram_plus` corta antes de terminar de subir el firmware — `hci0` no queda registrado, el escaneo no encuentra dispositivos todavía |
+| Gallery2 / Camera / CMFileManager / Browser | ✅ OK | Reagregados al build (excluidos originalmente por espacio); `system.img` en 170.5 MiB con ~15.5 MiB de margen |
 | SIM / datos móviles | ❓ Sin confirmar | Pendiente probar con SIM física insertada |
+| Freeze ocasional del sistema | ⚠️ Sin resolver | Reproducido navegando a una carpeta con muchos archivos reales grandes vía CMFileManager — causa raíz no confirmada, a veces autorecupera (kernel panic + reboot), a veces requiere sacar batería |
 
 ## Particiones (confirmadas contra `/proc/mtd` en hardware real)
 
