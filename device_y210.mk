@@ -97,6 +97,7 @@ PRODUCT_COPY_FILES += \
 	    device/huawei/y210/prebuilt/system/lib/hw/libqcomfm_if.so:system/lib/hw/libqcomfm_if.so \
 	    device/huawei/y210/prebuilt/system/etc/media_profiles.xml:system/etc/media_profiles.xml \
 	    device/huawei/y210/prebuilt/system/etc/media_codecs.xml:system/etc/media_codecs.xml \
+	    device/huawei/y210/prebuilt/system/etc/audio_policy.conf:system/etc/audio_policy.conf \
 	    device/huawei/y210/prebuilt/system/bin/sleeplogcat:system/bin/sleeplogcat \
 	    device/huawei/y210/prebuilt/system/bin/kmsgcat:system/bin/kmsgcat \
 	    device/huawei/y210/prebuilt/system/bin/diag_mdlog:system/bin/diag_mdlog
