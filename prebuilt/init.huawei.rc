@@ -281,7 +281,20 @@ service rmt_storage /system/bin/rmt_storage /dev/block/mmcblk0p10 /dev/block/mmc
 on property:ro.emmc=1
     start rmt_storage
 
-service hciattach /system/bin/sh /system/etc/init.qcom.bt.sh
+# system/bluetooth/bluedroid/bluetooth.c's bt_enable() hardcodes
+# `property_set("ctl.start", "hciattach")` -- it never knows or cares which
+# script that name maps to. Originally pointed at init.qcom.bt.sh, which
+# brings up a QCOM/SMD-based HCI transport: hci0 still appears with *a*
+# address and bluetoothd/dbus/RFCOMM all come up fine (none of that is
+# chip-specific), but the actual discrete Broadcom BCM4330 radio on
+# /dev/ttyHS0 never gets its firmware patched in, so real RF operations
+# like inquiry scanning silently find nothing. BoardConfig.mk sets
+# BOARD_HAVE_BLUETOOTH_BCM := true and this device ships BCM4330.hcd +
+# brcm_patchram_plus + a bt_power rfkill node for exactly this chip --
+# init.bcm.bt.sh (self-contained: powers the chip via rfkill, then runs
+# brcm_patchram_plus) is the correct script, just never wired to the
+# service name bluetooth.c actually starts.
+service hciattach /system/bin/sh /system/etc/bluetooth/init.bcm.bt.sh
     user root
     group qcom_oncrpc bluetooth net_bt_admin
     disabled

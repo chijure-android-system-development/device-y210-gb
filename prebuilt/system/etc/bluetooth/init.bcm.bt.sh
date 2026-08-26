@@ -69,11 +69,16 @@ start_hciattach ()
     logi "skip sleep enable, path missing: $BLUETOOTH_SLEEP_PATH"
   fi
   echo "start_hciattach pid"
-  if [ -x /system/bin/hciattach_check ]; then
-    /system/bin/hciattach_check /dev/ttyHS0 any 3000000 flow &
-  else
-    /system/bin/brcm_patchram_plus -d --enable_hci --enable_lpm --baudrate 3000000 --bd_addr 00:18:82:23:76:1d --patchram /system/etc/bluetooth/BCM4330.hcd /dev/ttyHS0 &
-  fi
+  # /system/bin/hciattach_check is the generic upstream BlueZ hciattach
+  # binary (built with ar3k/Texas Instruments firmware support, invoked
+  # here with chip type "any") -- it has no knowledge of Broadcom's
+  # proprietary patchram protocol or BCM4330.hcd, so preferring it (as
+  # this script originally did whenever the binary happened to be present)
+  # brings hci0 up with an all-zero address and no real firmware loaded.
+  # brcm_patchram_plus is the actual Broadcom-aware loader for this chip
+  # and must always be used here regardless of whether hciattach_check
+  # exists on the system image.
+  /system/bin/brcm_patchram_plus -d --enable_hci --enable_lpm --baudrate 3000000 --bd_addr 00:18:82:23:76:1d --patchram /system/etc/bluetooth/BCM4330.hcd /dev/ttyHS0 &
 
   hciattach_pid=$!
   loge "start_hciattach: pid = $hciattach_pid"
